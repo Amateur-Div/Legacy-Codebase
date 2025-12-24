@@ -1,4 +1,4 @@
-import { adminAuth } from "./firebase-admin";
+import { getAdminAuth } from "./firebase-admin";
 
 export async function authMiddleware(token?: string | null) {
   if (!token) {
@@ -6,13 +6,15 @@ export async function authMiddleware(token?: string | null) {
   }
 
   try {
+    const adminAuth = getAdminAuth();
     const decodedToken = await adminAuth.verifyIdToken(token);
+
     return {
       uid: decodedToken.uid,
       email: decodedToken.email,
     };
   } catch (err) {
-    console.error("Firebase auth error: ", err);
+    console.error("Firebase auth error:", err);
     throw new Error("Unauthorized: Invalid token");
   }
 }
