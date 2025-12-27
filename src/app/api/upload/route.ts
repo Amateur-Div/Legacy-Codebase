@@ -705,16 +705,17 @@ export async function POST(req: NextRequest) {
 
     const projectId = uuid();
     extractPath = path.join(os.tmpdir(), projectId);
-    fs.mkdirSync(extractPath, { recursive: true });
+    const extractRoot = path.join(extractPath, "repo");
+    fs.mkdirSync(extractRoot, { recursive: true });
 
-    const zipPath = path.join(extractPath, "project.zip");
+    const zipPath = path.join(extractRoot, "project.zip");
     fs.writeFileSync(zipPath, buffer);
 
     const zip = new AdmZip(zipPath);
-    zip.extractAllTo(extractPath, true);
+    zip.extractAllTo(extractRoot, true);
 
     let packageInfo = null;
-    const matches = globSync(`${extractPath}/**/package.json`, { nodir: true });
+    const matches = globSync(`${extractRoot}/**/package.json`, { nodir: true });
 
     if (matches.length) {
       const p = matches[0];
@@ -726,7 +727,7 @@ export async function POST(req: NextRequest) {
         dependencies: parsed.dependencies || {},
         devDependencies: parsed.devDependencies || {},
         manager: detectPackageManager(path.dirname(p)),
-        path: p.replace(extractPath + "/", ""),
+        path: p.replace(extractRoot + "/", ""),
       };
     }
 
@@ -734,7 +735,7 @@ export async function POST(req: NextRequest) {
       let results: string[] = [];
       for (const item of fs.readdirSync(dir)) {
         const full = path.join(dir, item);
-        const rel = path.relative(extractPath!, full).split(path.sep).join("/");
+        const rel = path.relative(extractRoot!, full).split(path.sep).join("/");
         if (fs.statSync(full).isDirectory()) {
           results.push(rel + "/");
           results = results.concat(walk(full));
@@ -744,8 +745,8 @@ export async function POST(req: NextRequest) {
     };
 
     const perFileGraphs: any[] = [];
-    const allFiles = walk(extractPath);
-    const fileTree = await buildFileTree(allFiles, extractPath, perFileGraphs);
+    const allFiles = walk(extractRoot);
+    const fileTree = await buildFileTree(allFiles, extractRoot, perFileGraphs);
 
     const mergedGraph = mergeFileGraphs(perFileGraphs);
     const enrichedGraph = enrichGraphSemantics(mergedGraph);
@@ -753,7 +754,7 @@ export async function POST(req: NextRequest) {
 
     const filesMap: Record<string, string> = {};
     for (const f of allFiles) {
-      const abs = path.join(extractPath, f);
+      const abs = path.join(extractRoot, f);
       if (existsSync(abs) && abs.match(/\.(js|jsx|ts|tsx)$/)) {
         filesMap[f] = fs.readFileSync(abs, "utf-8");
       }
@@ -775,7 +776,7 @@ export async function POST(req: NextRequest) {
     const db = mongoClient.db();
 
     const tags = detectTags(packageInfo, fileTree);
-    attachCrossFileImpact(fileTree, extractPath);
+    attachCrossFileImpact(fileTree, extractRoot);
 
     await db.collection("projects").insertOne({
       ownerId: uid,
