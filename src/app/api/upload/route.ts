@@ -618,6 +618,9 @@ export async function POST(req: NextRequest) {
 
     await db.collection("projects").insertOne({
       ownerId: uid,
+      members: [uid],
+      roles: { [uid]: "owner" },
+      pendingInvites: [],
       projectId,
       projectName: file.name.replace(/\.zip$/, ""),
       createdAt: new Date(),
