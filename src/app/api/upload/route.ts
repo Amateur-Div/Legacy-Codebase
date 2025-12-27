@@ -777,28 +777,6 @@ export async function POST(req: NextRequest) {
     const tags = detectTags(packageInfo, fileTree);
     attachCrossFileImpact(fileTree, extractPath);
 
-    // await db.collection("projects").insertOne({
-    //       ownerId: uid,
-    //       members: [uid],
-    //       roles: { [uid]: "owner" },
-    //       pendingInvites: [],
-    //       projectName,
-    //       createdAt: new Date(),
-    //       fileTree,
-    //       projectId,
-    //       stats: {
-    //         totalFiles,
-    //         totalFolders,
-    //         topLanguages: Object.entries(langMap)
-    //           .sort((a, b) => b[1] - a[1])
-    //           .map(([ext, count]) => ({ ext, count }))
-    //           .slice(0, 5),
-    //       },
-    //       packageInfo: packageInfo,
-    //       entryPoints,
-    //       tags,
-    //     });
-
     await db.collection("projects").insertOne({
       ownerId: uid,
       members: [uid],
