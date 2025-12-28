@@ -261,7 +261,7 @@ export async function POST(req: NextRequest) {
     const extractRoot = path.join(extractPath, "repo");
     fs.mkdirSync(extractRoot, { recursive: true });
 
-    const zipPath = path.join(extractRoot, "project.zip");
+    const zipPath = path.join(extractPath, "project.zip");
     fs.writeFileSync(zipPath, buffer);
 
     const zip = new AdmZip(zipPath);
@@ -343,6 +343,12 @@ export async function POST(req: NextRequest) {
       packageInfo,
       entryPoints,
       tags,
+    });
+
+    await db.collection("project_files").insertOne({
+      projectId,
+      files: filesMap,
+      createdAt: new Date(),
     });
 
     return NextResponse.json({
