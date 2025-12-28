@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
 import clientPromise from "@/lib/mongoClient";
 import { ObjectId } from "bson";
 import { authMiddleware } from "@/lib/auth-server";
@@ -21,15 +19,17 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const absolutePath = path.join(
-      process.cwd(),
-      "project_uploads",
-      projectId,
-      filePath
-    );
-    const content = fs.readFileSync(absolutePath, "utf-8");
+    const db = (await clientPromise).db();
 
-    return NextResponse.json({ content });
+    const fileDoc = await db.collection("project_files").findOne({ projectId });
+
+    if (!fileDoc || !fileDoc.files || !fileDoc.files[filePath]) {
+      return NextResponse.json({ error: "File not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      content: fileDoc.files[filePath],
+    });
   } catch (err) {
     console.error("FILE_READ_ERROR", err);
     return NextResponse.json({ error: "Failed to read file" }, { status: 500 });
@@ -39,42 +39,74 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const projectId = req.nextUrl.searchParams.get("projectId");
-    if (!projectId)
+    if (!projectId) {
       return NextResponse.json({ error: "Missing ID" }, { status: 400 });
+    }
 
     const token = req.headers.get("Authorization")?.split("Bearer ")[1];
-    const { uid } = await authMiddleware(token);
+    await authMiddleware(token);
 
     const { oldPath, newName } = await req.json();
 
+    if (!oldPath || !newName) {
+      return NextResponse.json(
+        { error: "Missing parameters" },
+        { status: 400 }
+      );
+    }
+
     const db = (await clientPromise).db();
-    const projects = db.collection("projects");
 
-    const ext = path.extname(oldPath);
-    const dir = path.dirname(oldPath);
-    const newPath = path.join(
-      dir,
-      newName.endsWith(ext) ? newName : newName + ext
-    );
+    const project = await db
+      .collection("projects")
+      .findOne({ _id: new ObjectId(projectId) });
 
-    const project = await projects.findOne({ _id: new ObjectId(projectId) });
     if (!project) throw new Error("Project not found");
 
-    const updatedTree = project.fileTree.map((file: any) => {
-      if (file.fullPath === oldPath) {
+    const ext = oldPath.includes(".")
+      ? oldPath.substring(oldPath.lastIndexOf("."))
+      : "";
+
+    const dir = oldPath.includes("/")
+      ? oldPath.substring(0, oldPath.lastIndexOf("/"))
+      : "";
+
+    const newPath =
+      dir.length > 0
+        ? `${dir}/${newName.endsWith(ext) ? newName : newName + ext}`
+        : newName.endsWith(ext)
+        ? newName
+        : newName + ext;
+
+    const updatedTree = project.fileTree.map((node: any) => {
+      if (node.fullPath === oldPath) {
         return {
-          ...file,
-          name: newPath,
+          ...node,
+          name: newPath.split("/").pop(),
           fullPath: newPath,
         };
       }
-      return file;
+      return node;
     });
 
-    await projects.updateOne(
-      { _id: new ObjectId(projectId) },
-      { $set: { fileTree: updatedTree } }
-    );
+    await db
+      .collection("projects")
+      .updateOne(
+        { _id: new ObjectId(projectId) },
+        { $set: { fileTree: updatedTree } }
+      );
+
+    const fileDoc = await db.collection("project_files").findOne({ projectId });
+
+    if (fileDoc && fileDoc.files && fileDoc.files[oldPath]) {
+      const newFiles = { ...fileDoc.files };
+      newFiles[newPath] = newFiles[oldPath];
+      delete newFiles[oldPath];
+
+      await db
+        .collection("project_files")
+        .updateOne({ projectId }, { $set: { files: newFiles } });
+    }
 
     return NextResponse.json({ success: true, newPath });
   } catch (error) {
@@ -89,15 +121,20 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const projectId = req.nextUrl.searchParams.get("projectId");
-    if (!projectId)
+    if (!projectId) {
       return NextResponse.json({ error: "Missing ID" }, { status: 400 });
+    }
 
     const token = req.headers.get("Authorization")?.split("Bearer ")[1];
-    const { uid } = await authMiddleware(token);
+    await authMiddleware(token);
 
     const { oldPath } = await req.json();
+    if (!oldPath) {
+      return NextResponse.json({ error: "Missing file path" }, { status: 400 });
+    }
 
     const db = (await clientPromise).db();
+
     const project = await db
       .collection("projects")
       .findOne({ _id: new ObjectId(projectId) });
@@ -105,21 +142,33 @@ export async function DELETE(req: NextRequest) {
     if (!project) throw new Error("Project not found");
 
     const updatedTree = project.fileTree.filter(
-      (file: any) => file.fullPath !== oldPath
+      (node: any) => node.fullPath !== oldPath
     );
 
-    const projects = db.collection("projects");
-    await projects.updateOne(
-      { _id: new ObjectId(projectId) },
-      { $set: { fileTree: updatedTree } }
-    );
+    await db
+      .collection("projects")
+      .updateOne(
+        { _id: new ObjectId(projectId) },
+        { $set: { fileTree: updatedTree } }
+      );
+
+    const fileDoc = await db.collection("project_files").findOne({ projectId });
+
+    if (fileDoc && fileDoc.files && fileDoc.files[oldPath]) {
+      const newFiles = { ...fileDoc.files };
+      delete newFiles[oldPath];
+
+      await db
+        .collection("project_files")
+        .updateOne({ projectId }, { $set: { files: newFiles } });
+    }
 
     return NextResponse.json({
       success: true,
       message: "File deleted successfully!",
     });
   } catch (error) {
-    console.error("Error deleting file :", error);
+    console.error("Error deleting file:", error);
     return NextResponse.json(
       { success: false, error: (error as Error).message },
       { status: 500 }
