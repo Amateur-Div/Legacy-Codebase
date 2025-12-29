@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import clientPromise from "@/lib/mongoClient";
 import { ObjectId } from "bson";
 import { authMiddleware } from "@/lib/auth-server";
+import path from "path";
 
 export async function GET(req: NextRequest) {
   try {
@@ -65,13 +66,17 @@ function updateImportsOnRename(
   return nodes.map((node) => {
     if (node.type === "file" && Array.isArray(node.imports)) {
       const updatedImports = node.imports.map((imp: any) => {
-        if (imp.resolvedPath === oldPath) {
+        const resolved = resolveImportPath(node.fullPath, imp.name);
+
+        if (resolved === oldPath.replace(/\.(js|jsx|ts|tsx)$/, "")) {
+          const newImport = toRelativeImport(node.fullPath, newPath);
+
           return {
             ...imp,
-            resolvedPath: newPath,
-            source: newPath,
+            name: newImport,
           };
         }
+
         return imp;
       });
 
@@ -92,15 +97,47 @@ function updateImportsOnRename(
   });
 }
 
+function resolveImportPath(
+  importerPath: string,
+  importName: string
+): string | null {
+  if (!importName.startsWith(".")) return null;
+
+  const importerDir = path.posix.dirname(importerPath);
+  const resolved = path.posix.normalize(
+    path.posix.join(importerDir, importName)
+  );
+
+  return resolved;
+}
+
+function toRelativeImport(importerPath: string, targetPath: string): string {
+  const importerDir = path.posix.dirname(importerPath);
+  let relative = path.posix.relative(importerDir, targetPath);
+
+  if (!relative.startsWith(".")) {
+    relative = "./" + relative;
+  }
+
+  relative = relative.replace(/\.(js|jsx|ts|tsx)$/, "");
+
+  return relative;
+}
+
 function updateImportStatements(
-  code: string,
+  content: string,
+  importerPath: string,
   oldPath: string,
   newPath: string
 ): string {
-  const escapedOld = oldPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const regex = new RegExp(`(from\\s+['"])${escapedOld}(['"])`, "g");
-
-  return code.replace(regex, `$1${newPath}$2`);
+  return content.replace(/from\s+['"]([^'"]+)['"]/g, (match, importName) => {
+    const resolved = resolveImportPath(importerPath, importName);
+    if (resolved === oldPath.replace(/\.(js|jsx|ts|tsx)$/, "")) {
+      const newImport = toRelativeImport(importerPath, newPath);
+      return `from "${newImport}"`;
+    }
+    return match;
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -169,6 +206,7 @@ export async function POST(req: NextRequest) {
       for (const [path, content] of Object.entries(newFiles)) {
         newFiles[path] = updateImportStatements(
           content as string,
+          path,
           oldPath,
           newPath
         );
