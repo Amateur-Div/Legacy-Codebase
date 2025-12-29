@@ -167,9 +167,7 @@ export async function POST(req: NextRequest) {
 
     const db = (await clientPromise).db();
 
-    const project = await db
-      .collection("projects")
-      .findOne({ _id: new ObjectId(projectId) });
+    const project = await db.collection("projects").findOne({ projectId });
 
     if (!project) throw new Error("Project not found");
 
