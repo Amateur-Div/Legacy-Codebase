@@ -208,23 +208,20 @@ export async function POST(req: NextRequest) {
 
     const fileDoc = await db.collection("project_files").findOne({ projectId });
 
-    if (fileDoc && fileDoc.files && fileDoc.files[oldPath]) {
-      const newFiles = { ...fileDoc.files };
-      newFiles[newPath] = newFiles[oldPath];
-      delete newFiles[oldPath];
+    if (fileDoc?.files && fileDoc.files[oldPath]) {
+      const updatedFiles: Record<string, string> = {};
 
-      for (const [path, content] of Object.entries(newFiles)) {
-        newFiles[path] = updateImportStatements(
-          content as string,
-          path,
-          oldPath,
-          newPath
-        );
+      for (const [filePath, content] of Object.entries(fileDoc.files)) {
+        if (filePath === oldPath) {
+          updatedFiles[newPath] = content as string;
+        } else {
+          updatedFiles[filePath] = content as string;
+        }
       }
 
       await db
         .collection("project_files")
-        .updateOne({ projectId }, { $set: { files: newFiles } });
+        .updateOne({ projectId }, { $set: { files: updatedFiles } });
     }
 
     return NextResponse.json({ success: true, newPath });
