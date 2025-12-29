@@ -36,6 +36,27 @@ export async function GET(req: NextRequest) {
   }
 }
 
+function renameInTree(nodes: any[], oldPath: string, newPath: string): any[] {
+  return nodes.map((node) => {
+    if (node.type === "file" && node.fullPath === oldPath) {
+      return {
+        ...node,
+        name: newPath.split("/").pop(),
+        fullPath: newPath,
+      };
+    }
+
+    if (node.children) {
+      return {
+        ...node,
+        children: renameInTree(node.children, oldPath, newPath),
+      };
+    }
+
+    return node;
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const projectId = req.nextUrl.searchParams.get("projectId");
@@ -78,16 +99,7 @@ export async function POST(req: NextRequest) {
         ? newName
         : newName + ext;
 
-    const updatedTree = project.fileTree.map((node: any) => {
-      if (node.fullPath === oldPath) {
-        return {
-          ...node,
-          name: newPath.split("/").pop(),
-          fullPath: newPath,
-        };
-      }
-      return node;
-    });
+    const updatedTree = renameInTree(project.fileTree, oldPath, newPath);
 
     await db
       .collection("projects")
@@ -118,6 +130,20 @@ export async function POST(req: NextRequest) {
   }
 }
 
+function deleteFromTree(nodes: any[], targetPath: string): any[] {
+  return nodes
+    .filter((node) => node.fullPath !== targetPath)
+    .map((node) => {
+      if (node.children) {
+        return {
+          ...node,
+          children: deleteFromTree(node.children, targetPath),
+        };
+      }
+      return node;
+    });
+}
+
 export async function DELETE(req: NextRequest) {
   try {
     const projectId = req.nextUrl.searchParams.get("projectId");
@@ -141,9 +167,7 @@ export async function DELETE(req: NextRequest) {
 
     if (!project) throw new Error("Project not found");
 
-    const updatedTree = project.fileTree.filter(
-      (node: any) => node.fullPath !== oldPath
-    );
+    const updatedTree = deleteFromTree(project.fileTree, oldPath);
 
     await db
       .collection("projects")
