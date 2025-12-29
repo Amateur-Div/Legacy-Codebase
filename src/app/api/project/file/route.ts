@@ -130,12 +130,20 @@ function updateImportStatements(
   oldPath: string,
   newPath: string
 ): string {
-  return content.replace(/from\s+['"]([^'"]+)['"]/g, (match, importName) => {
+  const importRegex =
+    /(import\s+[^'"]*['"]([^'"]+)['"]|require\(\s*['"]([^'"]+)['"]\s*\))/g;
+
+  return content.replace(importRegex, (match, _full, imp1, imp2) => {
+    const importName = imp1 || imp2;
+    if (!importName || !importName.startsWith(".")) return match;
+
     const resolved = resolveImportPath(importerPath, importName);
+
     if (resolved === oldPath.replace(/\.(js|jsx|ts|tsx)$/, "")) {
       const newImport = toRelativeImport(importerPath, newPath);
-      return `from "${newImport}"`;
+      return match.replace(importName, newImport);
     }
+
     return match;
   });
 }
