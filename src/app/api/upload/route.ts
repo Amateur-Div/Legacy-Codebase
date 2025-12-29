@@ -308,7 +308,7 @@ export async function POST(req: NextRequest) {
     const filesMap: Record<string, string> = {};
     for (const f of allFiles) {
       const abs = path.join(extractRoot, f);
-      if (existsSync(abs) && abs.match(/\.(js|jsx|ts|tsx)$/)) {
+      if (existsSync(abs)) {
         filesMap[f] = fs.readFileSync(abs, "utf-8");
       }
     }
