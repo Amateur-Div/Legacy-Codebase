@@ -97,16 +97,26 @@ function updateImportsOnRename(
   });
 }
 
+function normalizePath(p: string): string {
+  return p
+    .replace(/\\/g, "/")
+    .replace(/\.(js|jsx|ts|tsx)$/, "")
+    .replace(/^\.\/+/, "");
+}
+
 function resolveImportPath(
   importerPath: string,
   importName: string
 ): string | null {
   if (!importName.startsWith(".")) return null;
 
-  const importerDir = path.posix.dirname(importerPath);
-  const resolved = path.posix.normalize(
-    path.posix.join(importerDir, importName)
-  );
+  const importerDir = importerPath
+    .replace(/\\/g, "/")
+    .split("/")
+    .slice(0, -1)
+    .join("/");
+
+  const resolved = normalizePath(importerDir + "/" + importName);
 
   return resolved;
 }
@@ -127,25 +137,33 @@ function toRelativeImport(importerPath: string, targetPath: string): string {
 function updateImportStatements(
   content: string,
   importerPath: string,
-  oldPath: string,
-  newPath: string
+  normalizedOld: string,
+  normalizedNew: string
 ): string {
-  const importRegex =
-    /(import\s+[^'"]*['"]([^'"]+)['"]|require\(\s*['"]([^'"]+)['"]\s*\))/g;
+  return content.replace(
+    /(['"])(\.{1,2}\/[^'"]+)\1/g,
+    (match, quote, importName) => {
+      const resolved = resolveImportPath(importerPath, importName);
 
-  return content.replace(importRegex, (match, _full, imp1, imp2) => {
-    const importName = imp1 || imp2;
-    if (!importName || !importName.startsWith(".")) return match;
+      if (resolved === normalizedOld) {
+        const importerDir = normalizePath(
+          importerPath.split("/").slice(0, -1).join("/")
+        );
 
-    const resolved = resolveImportPath(importerPath, importName);
+        let relative = normalizedNew
+          .replace(importerDir, "")
+          .replace(/^\/+/, "");
 
-    if (resolved === oldPath.replace(/\.(js|jsx|ts|tsx)$/, "")) {
-      const newImport = toRelativeImport(importerPath, newPath);
-      return match.replace(importName, newImport);
+        if (!relative.startsWith(".")) {
+          relative = "./" + relative;
+        }
+
+        return `${quote}${relative}${quote}`;
+      }
+
+      return match;
     }
-
-    return match;
-  });
+  );
 }
 
 export async function POST(req: NextRequest) {
@@ -190,6 +208,9 @@ export async function POST(req: NextRequest) {
         ? newName
         : newName + ext;
 
+    const normalizedOld = normalizePath(oldPath);
+    const normalizedNew = normalizePath(newPath);
+
     const updatedTree = renameInTree(project.fileTree, oldPath, newPath);
     const treeWithUpdatedImports = updateImportsOnRename(
       updatedTree,
@@ -211,12 +232,12 @@ export async function POST(req: NextRequest) {
       newFiles[newPath] = newFiles[oldPath];
       delete newFiles[oldPath];
 
-      for (const [path, content] of Object.entries(newFiles)) {
-        newFiles[path] = updateImportStatements(
-          content as string,
-          path,
-          oldPath,
-          newPath
+      for (const [filePath, code] of Object.entries(fileDoc.files)) {
+        newFiles[filePath] = updateImportStatements(
+          code as string,
+          filePath,
+          normalizedOld,
+          normalizedNew
         );
       }
 
