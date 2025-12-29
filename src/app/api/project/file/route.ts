@@ -60,36 +60,34 @@ function renameInTree(nodes: any[], oldPath: string, newPath: string): any[] {
 
 function updateImportsOnRename(
   nodes: any[],
-  oldPath: string,
-  newPath: string
+  oldBase: string,
+  newBase: string
 ): any[] {
   return nodes.map((node) => {
     if (node.type === "file" && Array.isArray(node.imports)) {
-      const updatedImports = node.imports.map((imp: any) => {
-        const resolved = resolveImportPath(node.fullPath, imp.name);
-
-        if (resolved === oldPath.replace(/\.(js|jsx|ts|tsx)$/, "")) {
-          const newImport = toRelativeImport(node.fullPath, newPath);
-
-          return {
-            ...imp,
-            name: newImport,
-          };
-        }
-
-        return imp;
-      });
-
       return {
         ...node,
-        imports: updatedImports,
+        imports: node.imports.map((imp: any) => {
+          if (
+            (typeof imp.name === "string" &&
+              imp.name.endsWith(`/${oldBase}`)) ||
+            imp.name === `./${oldBase}` ||
+            imp.name === `../${oldBase}`
+          ) {
+            return {
+              ...imp,
+              name: imp.name.replace(oldBase, newBase),
+            };
+          }
+          return imp;
+        }),
       };
     }
 
     if (node.children) {
       return {
         ...node,
-        children: updateImportsOnRename(node.children, oldPath, newPath),
+        children: updateImportsOnRename(node.children, oldBase, newBase),
       };
     }
 
@@ -191,10 +189,14 @@ export async function POST(req: NextRequest) {
         : newName + ext;
 
     const updatedTree = renameInTree(project.fileTree, oldPath, newPath);
+
+    const oldBase = path.basename(oldPath).replace(/\.(js|jsx|ts|tsx)$/, "");
+    const newBase = path.basename(newPath).replace(/\.(js|jsx|ts|tsx)$/, "");
+
     const treeWithUpdatedImports = updateImportsOnRename(
       updatedTree,
-      oldPath,
-      newPath
+      oldBase,
+      newBase
     );
 
     await db
