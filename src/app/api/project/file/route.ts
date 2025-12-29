@@ -122,30 +122,6 @@ function toRelativeImport(importerPath: string, targetPath: string): string {
   return relative;
 }
 
-function updateImportStatements(
-  content: string,
-  importerPath: string,
-  oldPath: string,
-  newPath: string
-): string {
-  const importRegex =
-    /(import\s+[^'"]*['"]([^'"]+)['"]|require\(\s*['"]([^'"]+)['"]\s*\))/g;
-
-  return content.replace(importRegex, (match, _full, imp1, imp2) => {
-    const importName = imp1 || imp2;
-    if (!importName || !importName.startsWith(".")) return match;
-
-    const resolved = resolveImportPath(importerPath, importName);
-
-    if (resolved === oldPath.replace(/\.(js|jsx|ts|tsx)$/, "")) {
-      const newImport = toRelativeImport(importerPath, newPath);
-      return match.replace(importName, newImport);
-    }
-
-    return match;
-  });
-}
-
 export async function POST(req: NextRequest) {
   try {
     const projectId = req.nextUrl.searchParams.get("projectId");
@@ -199,21 +175,14 @@ export async function POST(req: NextRequest) {
 
     await db
       .collection("projects")
-      .updateOne(
-        { _id: new ObjectId(projectId) },
-        { $set: { fileTree: treeWithUpdatedImports } }
-      );
+      .updateOne({ projectId }, { $set: { fileTree: treeWithUpdatedImports } });
 
-    const fileDoc = await db
-      .collection("project_files")
-      .findOne({ _id: new ObjectId(projectId) });
+    const fileDoc = await db.collection("project_files").findOne({ projectId });
 
-    console.log(fileDoc);
     if (fileDoc?.files && fileDoc.files[oldPath]) {
       const updatedFiles: Record<string, string> = {};
 
       for (const [filePath, content] of Object.entries(fileDoc.files)) {
-        console.log(newPath);
         if (filePath === oldPath) {
           updatedFiles[newPath] = content as string;
         } else {
