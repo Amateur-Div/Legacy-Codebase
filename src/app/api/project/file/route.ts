@@ -212,6 +212,7 @@ export async function POST(req: NextRequest) {
       const updatedFiles: Record<string, string> = {};
 
       for (const [filePath, content] of Object.entries(fileDoc.files)) {
+        console.log(newPath);
         if (filePath === oldPath) {
           updatedFiles[newPath] = content as string;
         } else {
