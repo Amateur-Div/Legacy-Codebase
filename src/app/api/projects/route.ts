@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
     const { uid } = await authMiddleware(token);
 
     if (!uid) {
-      return new NextResponse(JSON.stringify({ error: "Unauthorized you" }), {
+      return new NextResponse(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
       });
     }

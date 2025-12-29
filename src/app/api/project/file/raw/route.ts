@@ -1,3 +1,5 @@
+import { authMiddleware } from "@/lib/auth-server";
+import clientPromise from "@/lib/mongoClient";
 import fs from "fs";
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
@@ -8,6 +10,9 @@ export async function GET(req: NextRequest) {
     const projectId = searchParams.get("projectId");
     const filePath = searchParams.get("filePath");
 
+    const token = req.headers.get("Authorization")?.split("Bearer ")[1];
+    await authMiddleware(token);
+
     if (!projectId || !filePath) {
       return NextResponse.json(
         { error: "Missing parameters" },
@@ -15,13 +20,15 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const absolutePath = path.join(
-      process.cwd(),
-      "project_uploads",
-      projectId,
-      filePath
-    );
-    const content = fs.readFileSync(absolutePath, "utf-8");
+    const db = (await clientPromise).db();
+
+    const fileDoc = await db.collection("project_files").findOne({ projectId });
+
+    if (!fileDoc || !fileDoc.files || !fileDoc.files[filePath]) {
+      return NextResponse.json({ error: "File not found" }, { status: 404 });
+    }
+
+    const content = fileDoc.files[filePath];
 
     return new Response(content, {
       status: 200,
