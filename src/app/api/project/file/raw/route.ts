@@ -1,8 +1,6 @@
 import { authMiddleware } from "@/lib/auth-server";
 import clientPromise from "@/lib/mongoClient";
-import fs from "fs";
 import { NextRequest, NextResponse } from "next/server";
-import path from "path";
 
 export async function GET(req: NextRequest) {
   try {
