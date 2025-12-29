@@ -57,6 +57,52 @@ function renameInTree(nodes: any[], oldPath: string, newPath: string): any[] {
   });
 }
 
+function updateImportsOnRename(
+  nodes: any[],
+  oldPath: string,
+  newPath: string
+): any[] {
+  return nodes.map((node) => {
+    if (node.type === "file" && Array.isArray(node.imports)) {
+      const updatedImports = node.imports.map((imp: any) => {
+        if (imp.resolvedPath === oldPath) {
+          return {
+            ...imp,
+            resolvedPath: newPath,
+            source: newPath,
+          };
+        }
+        return imp;
+      });
+
+      return {
+        ...node,
+        imports: updatedImports,
+      };
+    }
+
+    if (node.children) {
+      return {
+        ...node,
+        children: updateImportsOnRename(node.children, oldPath, newPath),
+      };
+    }
+
+    return node;
+  });
+}
+
+function updateImportStatements(
+  code: string,
+  oldPath: string,
+  newPath: string
+): string {
+  const escapedOld = oldPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(`(from\\s+['"])${escapedOld}(['"])`, "g");
+
+  return code.replace(regex, `$1${newPath}$2`);
+}
+
 export async function POST(req: NextRequest) {
   try {
     const projectId = req.nextUrl.searchParams.get("projectId");
@@ -100,12 +146,17 @@ export async function POST(req: NextRequest) {
         : newName + ext;
 
     const updatedTree = renameInTree(project.fileTree, oldPath, newPath);
+    const treeWithUpdatedImports = updateImportsOnRename(
+      updatedTree,
+      oldPath,
+      newPath
+    );
 
     await db
       .collection("projects")
       .updateOne(
         { _id: new ObjectId(projectId) },
-        { $set: { fileTree: updatedTree } }
+        { $set: { fileTree: treeWithUpdatedImports } }
       );
 
     const fileDoc = await db.collection("project_files").findOne({ projectId });
@@ -114,6 +165,14 @@ export async function POST(req: NextRequest) {
       const newFiles = { ...fileDoc.files };
       newFiles[newPath] = newFiles[oldPath];
       delete newFiles[oldPath];
+
+      for (const [path, content] of Object.entries(newFiles)) {
+        newFiles[path] = updateImportStatements(
+          content as string,
+          oldPath,
+          newPath
+        );
+      }
 
       await db
         .collection("project_files")
