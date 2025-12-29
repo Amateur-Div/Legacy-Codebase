@@ -442,13 +442,16 @@ export default function FileViewerPanel({
 
   const handleRenameFile = async (oldPath: string, newName: string) => {
     const token = await getAuth().currentUser?.getIdToken();
-    const res = await fetch(`/api/project/file?projectId=${projectId}`, {
-      method: "POST",
-      body: JSON.stringify({ oldPath, newName }),
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+    const res = await fetch(
+      `/api/project/file?projectId=${project.projectId}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ oldPath, newName }),
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
 
     const data = await res.json();
 

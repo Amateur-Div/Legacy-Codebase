@@ -206,8 +206,11 @@ export async function POST(req: NextRequest) {
         { $set: { fileTree: treeWithUpdatedImports } }
       );
 
-    const fileDoc = await db.collection("project_files").findOne({ projectId });
+    const fileDoc = await db
+      .collection("project_files")
+      .findOne({ _id: new ObjectId(projectId) });
 
+    console.log(fileDoc);
     if (fileDoc?.files && fileDoc.files[oldPath]) {
       const updatedFiles: Record<string, string> = {};
 
