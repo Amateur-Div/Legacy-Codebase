@@ -95,33 +95,6 @@ function updateImportsOnRename(
   });
 }
 
-function resolveImportPath(
-  importerPath: string,
-  importName: string
-): string | null {
-  if (!importName.startsWith(".")) return null;
-
-  const importerDir = path.posix.dirname(importerPath);
-  const resolved = path.posix.normalize(
-    path.posix.join(importerDir, importName)
-  );
-
-  return resolved;
-}
-
-function toRelativeImport(importerPath: string, targetPath: string): string {
-  const importerDir = path.posix.dirname(importerPath);
-  let relative = path.posix.relative(importerDir, targetPath);
-
-  if (!relative.startsWith(".")) {
-    relative = "./" + relative;
-  }
-
-  relative = relative.replace(/\.(js|jsx|ts|tsx)$/, "");
-
-  return relative;
-}
-
 export async function POST(req: NextRequest) {
   try {
     const projectId = req.nextUrl.searchParams.get("projectId");
