@@ -457,12 +457,12 @@ export default function FileViewerPanel({
 
     if (data.success) {
       const ext = oldPath.split(".").pop();
-      const dir = oldPath.substring(0, oldPath.lastIndexOf("\\"));
+      const dir = selectedPath?.substring(0, oldPath.lastIndexOf("/"));
 
       const updatedName = newName.endsWith(`.${ext}`)
         ? newName
         : `${newName}.${ext}`;
-      const newPath = `${dir}\\${updatedName}`;
+      const newPath = `${dir}/${updatedName}`;
 
       setSelectedPath(newPath);
 
