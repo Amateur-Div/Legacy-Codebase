@@ -3,6 +3,8 @@ import clientPromise from "@/lib/mongoClient";
 import { ObjectId } from "bson";
 import { authMiddleware } from "@/lib/auth-server";
 import path from "path";
+import { rewriteImportsAST } from "../../lib/refactorImports";
+import { attachCrossFileImpact } from "../../lib/buildCrossFileImpactMap";
 
 export async function GET(req: NextRequest) {
   try {
@@ -95,6 +97,28 @@ function updateImportsOnRename(
   });
 }
 
+function collectFilesImporting(
+  nodes: any[],
+  oldBase: string,
+  acc: Set<string> = new Set()
+): Set<string> {
+  for (const node of nodes) {
+    if (node.type === "file" && Array.isArray(node.imports)) {
+      for (const imp of node.imports) {
+        if (typeof imp.name === "string" && imp.name.includes(oldBase)) {
+          acc.add(node.fullPath);
+        }
+      }
+    }
+
+    if (node.children) {
+      collectFilesImporting(node.children, oldBase, acc);
+    }
+  }
+
+  return acc;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const projectId = req.nextUrl.searchParams.get("projectId");
@@ -146,9 +170,16 @@ export async function POST(req: NextRequest) {
       newBase
     );
 
+    const treeWithUpdatedCrossFileImpact = attachCrossFileImpact(
+      treeWithUpdatedImports
+    );
+
     await db
       .collection("projects")
-      .updateOne({ projectId }, { $set: { fileTree: treeWithUpdatedImports } });
+      .updateOne(
+        { projectId },
+        { $set: { fileTree: treeWithUpdatedCrossFileImpact } }
+      );
 
     const fileDoc = await db.collection("project_files").findOne({ projectId });
 
@@ -160,6 +191,15 @@ export async function POST(req: NextRequest) {
           updatedFiles[newPath] = content as string;
         } else {
           updatedFiles[filePath] = content as string;
+        }
+      }
+
+      const affectedFiles = collectFilesImporting(project.fileTree, oldBase);
+
+      for (const filePath of affectedFiles) {
+        const code = updatedFiles[filePath];
+        if (typeof code === "string") {
+          updatedFiles[filePath] = rewriteImportsAST(code, oldBase, newBase);
         }
       }
 
@@ -215,7 +255,8 @@ export async function DELETE(req: NextRequest) {
 
     if (!project) throw new Error("Project not found");
 
-    const updatedTree = deleteFromTree(project.fileTree, oldPath);
+    let updatedTree = deleteFromTree(project.fileTree, oldPath);
+    updatedTree = attachCrossFileImpact(updatedTree);
 
     await db
       .collection("projects")

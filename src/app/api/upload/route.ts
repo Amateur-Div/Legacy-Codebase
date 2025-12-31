@@ -329,7 +329,7 @@ export async function POST(req: NextRequest) {
     const db = mongoClient.db();
 
     const tags = detectTags(packageInfo, fileTree);
-    attachCrossFileImpact(fileTree, extractRoot);
+    attachCrossFileImpact(fileTree);
 
     await db.collection("projects").insertOne({
       ownerId: uid,
