@@ -48,6 +48,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import ProjectAnalyzer from "@/app/projects/components/ProjectAnalyzer";
 import { useProjectPresence } from "../context/ProjectPresenceContext";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface FileViewerPanelProps {
   projectId: number | ObjectId;
@@ -519,6 +520,41 @@ export default function FileViewerPanel({
     return false;
   };
 
+  function ImpactSection({
+    title,
+    items,
+    emptyLabel,
+    onSelect,
+  }: {
+    title: string;
+    items: string[];
+    emptyLabel: string;
+    onSelect: (path: string) => void;
+  }) {
+    return (
+      <div>
+        <div className="mb-1 text-sm font-medium text-gray-700">{title}</div>
+
+        {items.length > 0 ? (
+          <ul className="space-y-1 rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2">
+            {items.map((item) => (
+              <li
+                key={item}
+                onClick={() => onSelect(item)}
+                className="cursor-pointer truncate rounded px-1 py-0.5 font-mono text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                title={item}
+              >
+                {item}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="ml-1 text-xs text-gray-400">{emptyLabel}</p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="bg-card border rounded-2xl p-6 shadow-sm overflow-auto max-h-[650px]">
@@ -707,53 +743,53 @@ export default function FileViewerPanel({
               </details>
             )}
 
-            <div>
-              <Card className="mt-3 mb-3 rounded-2xl shadow-sm border border-gray-200 bg-white/60 backdrop-blur">
-                <CardHeader className="pb-1">
-                  <h3 className="text-base font-semibold">Cross-File Impact</h3>
-                </CardHeader>
+            <Card className="mt-3 rounded-2xl border border-gray-200 bg-white/60 shadow-sm backdrop-blur">
+              <CardHeader className="pb-2">
+                <h3 className="text-base font-semibold text-gray-800">
+                  Cross-File Impact
+                </h3>
+              </CardHeader>
 
-                <CardContent className="text-sm space-y-2">
-                  <div>
-                    <span className="font-medium text-gray-700">Imports:</span>
-                    {selectedFileNode.impact.imports.length ? (
-                      <ul className="list-disc ml-5 mt-1 text-gray-600">
-                        {selectedFileNode.impact.imports.map((imp: string) => (
-                          <li
-                            className="cursor-pointer hover:underline hover:text-gray-800"
-                            key={imp}
-                            onClick={() => setSelectedPath(imp)}
-                          >
-                            {imp}
-                          </li>
-                        ))}
+              <CardContent className="space-y-4 text-sm">
+                {selectedFileNode.impact?.brokenImports?.length > 0 && (
+                  <Alert
+                    variant={"destructive"}
+                    className="rounded-xl border-yellow-300 bg-yellow-50/70"
+                  >
+                    <AlertTitle className="text-sm font-medium text-yellow-800">
+                      ⚠️ Broken Imports Detected
+                    </AlertTitle>
+                    <AlertDescription className="mt-1 text-sm text-yellow-700">
+                      <ul className="list-disc pl-5">
+                        {selectedFileNode.impact.brokenImports.map(
+                          (b: { source: string }, idx: number) => (
+                            <li key={idx} className="font-mono">
+                              {b.source}
+                            </li>
+                          )
+                        )}
                       </ul>
-                    ) : (
-                      <p className="text-gray-400 ml-2">None</p>
-                    )}
-                  </div>
+                    </AlertDescription>
+                  </Alert>
+                )}
 
-                  <div>
-                    <span className="font-medium text-gray-700">Used By:</span>
-                    {selectedFileNode.impact.usedBy.length ? (
-                      <ul className="list-disc ml-5 mt-1 text-gray-600">
-                        {selectedFileNode.impact.usedBy.map((file: string) => (
-                          <li
-                            className="cursor-pointer hover:underline hover:text-gray-800"
-                            key={file}
-                            onClick={() => setSelectedPath(file)}
-                          >
-                            {file}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-gray-400 ml-2">None</p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                {/* Imports */}
+                <ImpactSection
+                  title="Imports"
+                  items={selectedFileNode.impact.imports}
+                  emptyLabel="No imports"
+                  onSelect={setSelectedPath}
+                />
+
+                {/* Used By */}
+                <ImpactSection
+                  title="Used By"
+                  items={selectedFileNode.impact.usedBy}
+                  emptyLabel="Not used by any file"
+                  onSelect={setSelectedPath}
+                />
+              </CardContent>
+            </Card>
 
             <div
               ref={codeContainerRef}
