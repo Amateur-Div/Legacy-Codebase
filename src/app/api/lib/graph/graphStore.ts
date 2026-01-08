@@ -24,8 +24,6 @@ export async function getGraph(projectId: any, ownerId?: string) {
   const db = client.db();
   const col = db.collection(COLLECTION);
 
-  console.log(ownerId);
-
   const graphs = await col
     .find({ projectId })
     .sort({ createdAt: -1 })

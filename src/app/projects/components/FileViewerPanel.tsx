@@ -49,6 +49,10 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import ProjectAnalyzer from "@/app/projects/components/ProjectAnalyzer";
 import { useProjectPresence } from "../context/ProjectPresenceContext";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  patchGraphOnFileDelete,
+  patchGraphOnFileRename,
+} from "@/app/api/lib/graph/graphPatcher";
 
 interface FileViewerPanelProps {
   projectId: number | ObjectId;
@@ -400,6 +404,7 @@ export default function FileViewerPanel({
     });
 
     const data = await res.json();
+    const oldPath = selectedPath;
 
     if (data.success) {
       toast.success("file deleted successfully", {
@@ -412,6 +417,20 @@ export default function FileViewerPanel({
         ...project,
         fileTree: filteredTree,
       });
+
+      const updatedGraph = patchGraphOnFileDelete(graphData, oldPath!);
+      setGraphData(updatedGraph);
+
+      const res = await fetch(`/api/projects/${project.projectId}/graph`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          projectId: project.projectId,
+        },
+        body: JSON.stringify(updatedGraph),
+      });
+      const data = await res.json();
+      console.log("Graph data after rename", data);
     } else {
       toast.error("Error deleting file", {
         description: data.error || "An error occured.",
@@ -472,6 +491,20 @@ export default function FileViewerPanel({
         ...project,
         fileTree: filteredTree,
       });
+
+      const updatedGraph = patchGraphOnFileRename(graphData, oldPath, newPath);
+      setGraphData(updatedGraph);
+
+      const res = await fetch(`/api/projects/${project.projectId}/graph`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          projectId: project.projectId,
+        },
+        body: JSON.stringify(updatedGraph),
+      });
+      const data = await res.json();
+      console.log("Graph data after rename", data);
 
       toast.success("File renamed.", {
         description: `${newName}`,
@@ -651,6 +684,7 @@ export default function FileViewerPanel({
               projectId={projectId}
               graphData={graphData}
               setGraphData={setGraphData}
+              project={project}
             />
 
             {selectedFileNode?.language && (
@@ -743,51 +777,72 @@ export default function FileViewerPanel({
               </details>
             )}
 
-            <Card className="mt-3 rounded-2xl border border-gray-200 bg-white/60 shadow-sm backdrop-blur">
+            <Card className="mt-3 mb-3 rounded-2xl border border-gray-200 bg-white/60 backdrop-blur">
               <CardHeader className="pb-2">
-                <h3 className="text-base font-semibold text-gray-800">
-                  Cross-File Impact
-                </h3>
+                <h3 className="text-base font-semibold">Cross-File Impact</h3>
               </CardHeader>
 
               <CardContent className="space-y-4 text-sm">
-                {selectedFileNode.impact?.brokenImports?.length > 0 && (
-                  <Alert
-                    variant={"destructive"}
-                    className="rounded-xl border-yellow-300 bg-yellow-50/70"
-                  >
-                    <AlertTitle className="text-sm font-medium text-yellow-800">
-                      ⚠️ Broken Imports Detected
-                    </AlertTitle>
-                    <AlertDescription className="mt-1 text-sm text-yellow-700">
-                      <ul className="list-disc pl-5">
-                        {selectedFileNode.impact.brokenImports.map(
-                          (b: { source: string }, idx: number) => (
-                            <li key={idx} className="font-mono">
-                              {b.source}
-                            </li>
-                          )
-                        )}
-                      </ul>
-                    </AlertDescription>
-                  </Alert>
+                <div>
+                  <div className="font-medium text-gray-700 mb-1">Imports</div>
+                  {selectedFileNode.impact.imports.length ? (
+                    <ul className="ml-4 list-disc space-y-1 text-gray-600">
+                      {selectedFileNode.impact.imports.map((imp: string) => (
+                        <li
+                          key={imp}
+                          className="cursor-pointer hover:text-gray-900 hover:underline"
+                          onClick={() => setSelectedPath(imp)}
+                        >
+                          {imp}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="ml-2 text-gray-400">None</p>
+                  )}
+                </div>
+
+                <div>
+                  <div className="font-medium text-gray-700 mb-1">Used By</div>
+                  {selectedFileNode.impact.usedBy.length ? (
+                    <ul className="ml-4 list-disc space-y-1 text-gray-600">
+                      {selectedFileNode.impact.usedBy.map((file: string) => (
+                        <li
+                          key={file}
+                          className="cursor-pointer hover:text-gray-900 hover:underline"
+                          onClick={() => setSelectedPath(file)}
+                        >
+                          {file}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="ml-2 text-gray-400">None</p>
+                  )}
+                </div>
+
+                {selectedFileNode.impact.brokenImports?.length > 0 && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 p-3">
+                    <div className="flex items-center gap-2 font-medium text-red-700 mb-1">
+                      ⚠ Broken Imports
+                    </div>
+
+                    <ul className="ml-4 list-disc space-y-1 text-red-600">
+                      {selectedFileNode.impact.brokenImports.map(
+                        (b: { source: string }, i: number) => (
+                          <li key={i} className="font-mono text-xs">
+                            {b.source}
+                          </li>
+                        )
+                      )}
+                    </ul>
+
+                    <p className="mt-2 text-xs text-red-500">
+                      These imports no longer resolve to any file in the
+                      project.
+                    </p>
+                  </div>
                 )}
-
-                {/* Imports */}
-                <ImpactSection
-                  title="Imports"
-                  items={selectedFileNode.impact.imports}
-                  emptyLabel="No imports"
-                  onSelect={setSelectedPath}
-                />
-
-                {/* Used By */}
-                <ImpactSection
-                  title="Used By"
-                  items={selectedFileNode.impact.usedBy}
-                  emptyLabel="Not used by any file"
-                  onSelect={setSelectedPath}
-                />
               </CardContent>
             </Card>
 

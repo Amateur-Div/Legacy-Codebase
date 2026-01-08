@@ -14,12 +14,6 @@ export async function GET(
 
   const { uid } = await authMiddleware(token);
 
-  if (!uid) {
-    return new NextResponse(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-    });
-  }
-
   let job = await getJob(jobId);
   if (!job) {
     job = await loadJobForOwner(jobId, uid);

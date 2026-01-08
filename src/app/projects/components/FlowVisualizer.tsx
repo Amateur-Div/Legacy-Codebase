@@ -31,6 +31,7 @@ interface Props {
   setGraphData: (graphData: { nodes: any[]; edges: any[] }) => void;
   projectId: any;
   id: any;
+  project: any;
 }
 
 const NODE_W = 240;
@@ -184,6 +185,7 @@ export default function FlowVisualizer({
   projectId,
   setGraphData,
   id,
+  project,
 }: Props) {
   const { users, channelRef, subscribedRef } = useProjectPresence();
   const [heatmapMode, setHeatmapMode] = useState<
@@ -204,7 +206,6 @@ export default function FlowVisualizer({
       });
 
       const data = await res.json();
-      console.log(data);
 
       setGraphData(data.graphs?.[0]?.record);
     };
@@ -237,6 +238,80 @@ export default function FlowVisualizer({
   const onNodeClick = useCallback((_: any, node: Node) => {
     setSelectedNode(node);
   }, []);
+
+  function buildFileNodes(fileTree: any[]) {
+    const nodes: Node[] = [];
+
+    const walk = (items: any[]) => {
+      for (const it of items) {
+        if (it.type === "file") {
+          nodes.push({
+            id: `file::${it.fullPath}`,
+            type: "file",
+            position: { x: 0, y: 0 },
+            data: {
+              label: `📄 ${it.name}`,
+              raw: it,
+              color: "#E5E7EB",
+            },
+          });
+        }
+        if (it.children) walk(it.children);
+      }
+    };
+
+    walk(fileTree);
+    return nodes;
+  }
+
+  function normalizePath(p?: string) {
+    if (!p) return null;
+    return p.replace(/^\/+/, "").replace(/\\/g, "/");
+  }
+
+  function buildFileImportEdges(fileTree: any[]) {
+    const edges: Edge[] = [];
+
+    const walk = (items: any[]) => {
+      for (const it of items) {
+        if (it.type === "file" && it.impact?.imports) {
+          for (const target of it.impact.imports) {
+            edges.push({
+              id: `file::${it.fullPath}->file::${target}`,
+              source: `file::${it.fullPath}`,
+              target: `file::${target}`,
+              label: "imports",
+              style: {
+                stroke: "#9CA3AF",
+                strokeDasharray: "6 4",
+              },
+              markerEnd: { type: MarkerType.ArrowClosed },
+            });
+          }
+        }
+        if (it.children) walk(it.children);
+      }
+    };
+
+    walk(fileTree);
+    return edges;
+  }
+
+  const existingFiles = useMemo(() => {
+    const set = new Set<string>();
+
+    const walk = (nodes: any[]) => {
+      for (const n of nodes) {
+        if (n.type === "file" && n.fullPath) {
+          set.add(normalizePath(n.fullPath)!);
+        }
+        if (n.children) walk(n.children);
+      }
+    };
+
+    walk(project.fileTree);
+    return set;
+  }, [project.fileTree]);
 
   const colorBySemantic = (n: any) => {
     const sem = n.semantic;
@@ -282,102 +357,70 @@ export default function FlowVisualizer({
   const nodesFromData = useMemo(() => {
     if (!graphData?.nodes) return [];
 
-    return graphData.nodes
+    const executionNodes = graphData.nodes
+      .filter((n: any) => n.type !== "file")
       .filter((n: any) => {
-        const type = normalizeType(n.type);
-        if (!filterType || filterType === "all") return true;
-        return type === filterType;
+        if (!n.file) return true;
+        return existingFiles.has(n.file);
       })
       .map((n) => {
         const shortLabel = (() => {
-          switch (n.type) {
-            case "function":
-              return `🟢 Function: ${n.name ?? "anonymous"}`;
-            case "if":
-              return `🔸 If (${(n.code ?? "").slice(0, 40)})`;
-            case "if-true":
-              return `🟡 If True`;
-            case "if-false":
-              return `🟡 If False`;
-            case "loop":
-              return `🔵 Loop (${(n.code ?? "").slice(0, 40)})`;
-            case "fn-entry":
-              return `▶ FN ENTRY`;
-            case "loop-body":
-              return `▶ LOOP BODY`;
-            case "after-loop":
-              return `▶ AFTER LOOP`;
-            case "trycatch":
-              return `🟣 Try/Catch`;
-            case "error":
-              return `⚠ ERROR`;
-            default:
-              return (n.code ?? "").slice(0, 60) || n.type.toUpperCase();
-          }
+          if (n.type === "file") return `📄 ${n.name}`;
+          if (n.type === "function")
+            return `🟢 Function: ${n.name ?? "anonymous"}`;
+          return (n.code ?? "").slice(0, 60) || n.type.toUpperCase();
         })();
 
         return {
           id: n.id,
-          type: normalizeType(n.type) || "custom",
+          type: n.type === "file" ? "file" : "custom",
           position: { x: 0, y: 0 },
-          background: colorByType(n.type),
           data: {
-            id: n.id,
-            name: n.name,
-            code: n.code ?? "",
             label: shortLabel,
-            tooltip: n.code ?? "No code",
-            color: colorBySemantic(n),
             raw: n,
-            type: n.type,
-            semantic: n.semantic,
-            importanceScore: n.semantic?.importance,
-            complexityScore: n.semantic?.complexity,
-            deadCode: n.semantic?.dead,
+            color: colorBySemantic(n),
           },
           draggable: false,
           sourcePosition: Position.Bottom,
           targetPosition: Position.Top,
         } as Node;
       });
-  }, [graphData, filterType, heatmapMode]);
 
-  const edgesFromData = useMemo(() => {
-    const existingNodeIds = new Set((nodesFromData || []).map((n) => n.id));
-    return (graphData?.edges || [])
-      .filter(
-        (e) =>
-          e.from &&
-          e.to &&
-          existingNodeIds.has(e.from) &&
-          existingNodeIds.has(e.to)
-      )
-      .map((e) => {
-        const isNext = e.label === "next";
-        return {
-          id: e.id,
-          source: e.from,
-          target: e.to,
-          label: e.label,
-          animated: false,
-          markerEnd: { type: MarkerType.ArrowClosed },
-          style: {
-            stroke: isNext ? "#60A5FA" : "#34D399",
-            strokeWidth: isNext ? 1.6 : 2.2,
-            strokeDasharray: isNext ? "6 4" : undefined,
-            opacity: 0.95,
-            transition: "stroke 0.3s ease, opacity 0.3s ease",
-          },
-        } as Edge;
-      });
-  }, [graphData, filterType, heatmapMode]);
+    const fileNodes = buildFileNodes(project.fileTree);
+
+    return [...fileNodes, ...executionNodes];
+  }, [graphData, filterType, heatmapMode, project.fileTree]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(nodesFromData);
+
+  const edgesFromData = useMemo(() => {
+    const validNodeIds = new Set(nodes.map((n) => n.id));
+
+    const execEdges = (graphData?.edges || [])
+      .filter((e) => validNodeIds.has(e.from) && validNodeIds.has(e.to))
+      .map((e) => ({
+        id: e.id,
+        source: e.from,
+        target: e.to,
+        label: e.label,
+        markerEnd: { type: MarkerType.ArrowClosed },
+        style: {
+          stroke: e.label === "next" ? "#60A5FA" : "#34D399",
+          strokeWidth: 2,
+        },
+      })) as Edge[];
+
+    const fileEdges = buildFileImportEdges(project.fileTree);
+
+    return [...fileEdges, ...execEdges];
+  }, [graphData, project.fileTree]);
+
   const [edges, setEdges, onEdgesChange] = useEdgesState(edgesFromData);
   const nodeTypes: NodeTypes = useMemo(
     () => ({
       custom: CustomNode,
       root: CustomNode,
+      file: CustomNode,
       function: CustomNode,
       "fn-entry": CustomNode,
       if: CustomNode,

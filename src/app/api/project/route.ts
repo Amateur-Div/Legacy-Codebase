@@ -44,7 +44,6 @@ export async function GET(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const id = req.nextUrl.searchParams.get("id");
-    console.log(id);
     if (!id) return NextResponse.json({ error: "Missing ID" }, { status: 400 });
 
     const token = req.headers.get("Authorization")?.split("Bearer ")[1];
@@ -57,6 +56,8 @@ export async function DELETE(req: NextRequest) {
       _id: new ObjectId(id),
       ownerId: uid,
     });
+
+    await db.collection("graphs").deleteOne({ projectId: project?.projectId });
 
     if (!project)
       return NextResponse.json({ error: "Not found" }, { status: 404 });

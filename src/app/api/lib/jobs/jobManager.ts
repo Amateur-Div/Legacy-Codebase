@@ -1,7 +1,6 @@
 import { loadJob } from "./jobStore";
 import { v4 as uuidv4 } from "uuid";
 import type { FlowGraph } from "../analyzer/types";
-import { scanImports } from "../analyzer/scanImports";
 import { mergeFileGraphs } from "../analyzer/mergeFileGraph";
 import { enrichGraphSemantics } from "../analyzer/enrichGraphSemantics";
 import { saveJob } from "./jobStore";
@@ -140,8 +139,8 @@ async function runAnalysisTask(files: Record<string, string>, job: Job) {
     job.message = "Saving graph (4/4)";
     emitJobUpdate(job);
 
-    console.log("About to save graph : ", job.projectId);
-    await saveGraph(job.projectId, enriched);
+    // console.log("About to save graph : ", job.projectId);
+    // await saveGraph(job.projectId, enriched);
 
     console.log("Graph saved : ");
 

@@ -10,11 +10,13 @@ export default function ProjectAnalyzer({
   projectId,
   graphData,
   setGraphData,
+  project,
 }: {
   id: string;
   projectId: any;
   graphData: { nodes: any[]; edges: any[] };
   setGraphData: (graphData: { nodes: any[]; edges: any[] }) => void;
+  project: any;
 }) {
   const { jobId, setJobId } = useAuth();
   const [status, setStatus] = useState<
@@ -174,6 +176,7 @@ export default function ProjectAnalyzer({
           id={id}
           graphData={graphData}
           setGraphData={setGraphData}
+          project={project}
         />
       </ReactFlowProvider>
     );

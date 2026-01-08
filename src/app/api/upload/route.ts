@@ -18,6 +18,8 @@ import { mergeFileGraphs } from "../lib/analyzer/mergeFileGraph";
 import { enrichGraphSemantics } from "../lib/analyzer/enrichGraphSemantics";
 import { saveGraph } from "../lib/graph/graphStore";
 import { enqueueJob } from "../lib/jobs/jobManager";
+import { injectFileDependencyEdges } from "../lib/analyzer/injectFileDependencyEdges";
+import { styleGraphEdges } from "../lib/analyzer/styleGraphEdges";
 
 function extractHighlights(code: string) {
   const ast = babelParser.parse(code, {
@@ -302,8 +304,14 @@ export async function POST(req: NextRequest) {
     const fileTree = await buildFileTree(allFiles, extractRoot, perFileGraphs);
 
     const mergedGraph = mergeFileGraphs(perFileGraphs);
-    const enrichedGraph = enrichGraphSemantics(mergedGraph);
-    await saveGraph(projectId, enrichedGraph, uid);
+    const withDeps = injectFileDependencyEdges(mergedGraph, fileTree);
+    const enrichedGraph = enrichGraphSemantics(withDeps);
+    const styleGraph = {
+      ...enrichedGraph,
+      edges: styleGraphEdges(enrichedGraph.edges),
+    };
+
+    await saveGraph(projectId, styleGraph, uid);
 
     const filesMap: Record<string, string> = {};
     for (const f of allFiles) {

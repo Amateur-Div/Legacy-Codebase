@@ -1,4 +1,4 @@
-import type { FlowGraph, FlowNode, FlowEdge } from "./types";
+import type { FlowNode, FlowEdge } from "./types";
 
 export function enrichGraphSemantics(graph: {
   mergedNodes: any[];
