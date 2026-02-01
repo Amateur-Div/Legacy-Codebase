@@ -5,6 +5,7 @@ import { AuthProvider } from "@/context/AuthContext";
 import { Toaster } from "sonner";
 import AppLayout from "@/components/layout/AppLayout";
 import { Providers } from "./providers";
+import { ProjectProvider } from "@/context/ProjectContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,10 +34,12 @@ export default function RootLayout({
       >
         <Providers>
           <AuthProvider>
-            <AppLayout>
-              {children}
-              <Toaster richColors position="top-right" />
-            </AppLayout>
+            <ProjectProvider>
+              <AppLayout>
+                {children}
+                <Toaster richColors position="top-right" />
+              </AppLayout>
+            </ProjectProvider>
           </AuthProvider>
         </Providers>
       </body>

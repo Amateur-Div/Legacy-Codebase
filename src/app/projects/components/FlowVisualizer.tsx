@@ -9,9 +9,6 @@ import ReactFlow, {
   Background,
   Controls,
   MiniMap,
-  useNodesState,
-  useEdgesState,
-  addEdge,
   Position,
   MarkerType,
   Node,
@@ -26,9 +23,29 @@ import "reactflow/dist/style.css";
 import { getAuth } from "firebase/auth";
 import { useProjectPresence } from "../context/ProjectPresenceContext";
 
+type GraphMode = "full" | "lite" | "disabled";
+
 interface Props {
-  graphData: { nodes: any[]; edges: any[] };
-  setGraphData: (graphData: { nodes: any[]; edges: any[] }) => void;
+  graphData: {
+    nodes: any[];
+    edges: any[];
+    meta?: {
+      nodeCount: number;
+      edgeCount: number;
+      mode: string | null;
+      generatedAt: Date;
+    };
+  };
+  setGraphData: (graphData: {
+    nodes: any[];
+    edges: any[];
+    meta: {
+      nodeCount: number;
+      edgeCount: number;
+      mode: string | null;
+      generatedAt: Date;
+    };
+  }) => void;
   projectId: any;
   id: any;
   project: any;
@@ -100,8 +117,6 @@ const baseNodeStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   transition: "all 0.25s ease",
-  opacity: 0,
-  animation: "fadeIn 0.4s ease forwards",
 };
 
 const style = document.createElement("style");
@@ -113,13 +128,33 @@ style.innerHTML = `
 `;
 document.head.appendChild(style);
 
+let disableFancyUI = false;
+
 const CustomNode = ({ data }: any) => {
   const nodeRef = useRef<HTMLDivElement | null>(null);
 
+  const filterOpacity = data?.fadedByFilter ? 0.15 : 1;
+  const highlightOpacity = data?.fadedByHighlight ? 0.08 : 1;
+
+  const deadOpacity = data?.fadedByDead ? 0.05 : 1;
+  const functionFocusOpacity = data?.fadedByFunctionFocus ? 0.05 : 1;
+
+  const finalOpacity = disableFancyUI
+    ? 1
+    : Math.min(
+        filterOpacity,
+        highlightOpacity,
+        deadOpacity,
+        functionFocusOpacity,
+      );
+
+  const isDead = data?.fadedByDead;
   const showTooltip = () => {
     if (!nodeRef.current) return;
     const rect = nodeRef.current.getBoundingClientRect();
-    tooltipEl.textContent = data?.tooltip ?? "No code snippet";
+    tooltipEl.textContent =
+      (data?.raw?.code ?? "No code") +
+      (data?.fadedByDead ? "\n⚠ Dead / unreachable code" : "");
     tooltipEl.style.left = `${rect.left + rect.width / 2}px`;
     tooltipEl.style.top = `${rect.bottom + 6}px`;
     tooltipEl.style.transform = "translateX(-50%)";
@@ -142,10 +177,16 @@ const CustomNode = ({ data }: any) => {
         background: data?.color || "#fff",
         width: NODE_W - 24,
         height: NODE_H - 24,
-        position: "relative",
-        cursor: "default",
-        pointerEvents: "auto",
-        transformOrigin: "center",
+        opacity: finalOpacity,
+        border: isDead ? "1px dashed #9CA3AF" : "1px solid #ccc",
+        transform:
+          !disableFancyUI && data?.focused ? "scale(1.08)" : "scale(1)",
+        boxShadow:
+          !disableFancyUI && data?.focused
+            ? "0 0 0 3px rgba(59,130,246,0.6)"
+            : "0 3px 6px rgba(0,0,0,0.08)",
+        cursor: data?.fadedByFilter ? "not-allowed" : "default",
+        pointerEvents: data?.fadedByFilter ? "none" : "auto",
       }}
       onMouseOver={(e) =>
         (e.currentTarget.style.boxShadow = "0 0 10px rgba(59,130,246,0.4)")
@@ -195,6 +236,10 @@ export default function FlowVisualizer({
   const [filterType, setFilterType] = useState<string | null>(null);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [showVisualizer, setShowVisualizer] = useState(true);
+  const [hideDeadCode, setHideDeadCode] = useState(false);
+  const [showLegend, setShowLegend] = useState<boolean>(false);
+  const [nodeCount, setNodeCount] = useState(0);
+  const [edgeCount, setEdgeCount] = useState(0);
 
   useEffect(() => {
     const fetchGraphData = async () => {
@@ -208,6 +253,8 @@ export default function FlowVisualizer({
       const data = await res.json();
 
       setGraphData(data.graphs?.[0]?.record);
+      setNodeCount(data.graphs?.[0].record?.meta?.nodeCount);
+      setEdgeCount(data.graphs?.[0].record?.meta?.edgeCount);
     };
 
     fetchGraphData();
@@ -216,6 +263,39 @@ export default function FlowVisualizer({
   useEffect(() => {
     console.log(graphData);
   }, [graphData]);
+
+  const graphMode: GraphMode =
+    nodeCount > 1500 || edgeCount > 3000
+      ? "disabled"
+      : nodeCount > 600 || edgeCount > 1200
+        ? "lite"
+        : "full";
+
+  disableFancyUI = graphMode !== "full";
+
+  const focusedFunctionId = useMemo(() => {
+    if (selectedNode && selectedNode.data?.raw?.type === "function") {
+      return selectedNode.id;
+    }
+    return null;
+  }, [selectedNode]);
+
+  function collectSubgraph(start: string, adj: Map<string, string[]>) {
+    const visited = new Set<string>();
+    const queue = [start];
+
+    while (queue.length) {
+      const cur = queue.shift()!;
+      if (visited.has(cur)) continue;
+      visited.add(cur);
+
+      for (const next of adj.get(cur) || []) {
+        queue.push(next);
+      }
+    }
+
+    return visited;
+  }
 
   useEffect(() => {
     const uid = getAuth().currentUser?.uid;
@@ -237,6 +317,10 @@ export default function FlowVisualizer({
 
   const onNodeClick = useCallback((_: any, node: Node) => {
     setSelectedNode(node);
+  }, []);
+
+  const onPaneClick = useCallback(() => {
+    setSelectedNode(null);
   }, []);
 
   function buildFileNodes(fileTree: any[]) {
@@ -333,14 +417,6 @@ export default function FlowVisualizer({
     return typeColors[n.type] || "#fff";
   };
 
-  function colorByType(type: string) {
-    const t = normalizeType(type);
-    if (t === "function") return "#d97706";
-    if (t === "loop") return "#3b82f6";
-    if (t === "if") return "#10b981";
-    return "#6b7280";
-  }
-
   function normalizeType(type?: string) {
     if (!type) return "statement";
     const t = type.toLowerCase();
@@ -354,68 +430,162 @@ export default function FlowVisualizer({
     return t;
   }
 
-  const nodesFromData = useMemo(() => {
-    if (!graphData?.nodes) return [];
+  const structuralGraph = useMemo(() => {
+    if (graphMode === "disabled") {
+      return { nodes: [], edges: [] };
+    }
+    if (!graphData?.nodes) return { nodes: [], edges: [] };
 
-    const executionNodes = graphData.nodes
+    const execNodes = graphData.nodes
       .filter((n: any) => n.type !== "file")
-      .filter((n: any) => {
-        if (!n.file) return true;
-        return existingFiles.has(n.file);
-      })
-      .map((n) => {
-        const shortLabel = (() => {
-          if (n.type === "file") return `📄 ${n.name}`;
-          if (n.type === "function")
-            return `🟢 Function: ${n.name ?? "anonymous"}`;
-          return (n.code ?? "").slice(0, 60) || n.type.toUpperCase();
-        })();
+      .map((n) => ({
+        id: n.id,
+        type: "custom",
+        position: { x: 0, y: 0 },
+        data: { raw: n },
+        draggable: false,
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+      }));
 
-        return {
-          id: n.id,
-          type: n.type === "file" ? "file" : "custom",
-          position: { x: 0, y: 0 },
-          data: {
-            label: shortLabel,
-            raw: n,
-            color: colorBySemantic(n),
-          },
-          draggable: false,
-          sourcePosition: Position.Bottom,
-          targetPosition: Position.Top,
-        } as Node;
-      });
-
-    const fileNodes = buildFileNodes(project.fileTree);
-
-    return [...fileNodes, ...executionNodes];
-  }, [graphData, filterType, heatmapMode, project.fileTree]);
-
-  const [nodes, setNodes, onNodesChange] = useNodesState(nodesFromData);
-
-  const edgesFromData = useMemo(() => {
-    const validNodeIds = new Set(nodes.map((n) => n.id));
-
-    const execEdges = (graphData?.edges || [])
-      .filter((e) => validNodeIds.has(e.from) && validNodeIds.has(e.to))
-      .map((e) => ({
+    return {
+      nodes: execNodes,
+      edges: graphData.edges.map((e: any) => ({
         id: e.id,
         source: e.from,
         target: e.to,
         label: e.label,
         markerEnd: { type: MarkerType.ArrowClosed },
-        style: {
-          stroke: e.label === "next" ? "#60A5FA" : "#34D399",
-          strokeWidth: 2,
+      })),
+    };
+  }, [graphData]);
+
+  const layoutedGraph = useMemo(() => {
+    if (graphMode !== "full") {
+      return structuralGraph;
+    }
+    if (!structuralGraph.nodes.length) return structuralGraph;
+
+    const g = getDagreGraph(structuralGraph.nodes, structuralGraph.edges, "TB");
+
+    return {
+      nodes: structuralGraph.nodes.map((n) => {
+        const p = g.node(n.id);
+        return {
+          ...n,
+          position: { x: p.x - NODE_W / 2, y: p.y - NODE_H / 2 },
+        };
+      }),
+      edges: structuralGraph.edges,
+    };
+  }, [structuralGraph]);
+
+  const adjacency = useMemo(() => {
+    const forward = new Map<string, string[]>();
+    const backward = new Map<string, string[]>();
+
+    for (const e of layoutedGraph.edges) {
+      if (!forward.has(e.source as string)) forward.set(e.source as string, []);
+      if (!backward.has(e.target as string))
+        backward.set(e.target as string, []);
+
+      forward.get(e.source as string)!.push(e.target as string);
+      backward.get(e.target as string)!.push(e.source as string);
+    }
+
+    return { forward, backward };
+  }, [layoutedGraph]);
+
+  const functionFocusedNodes = useMemo(() => {
+    if (!focusedFunctionId) return null;
+    return collectSubgraph(focusedFunctionId, adjacency.forward);
+  }, [focusedFunctionId, adjacency]);
+
+  function collectReachable(start: string, adj: Map<string, string[]>) {
+    const visited = new Set<string>();
+    const q = [start];
+
+    while (q.length) {
+      const cur = q.shift()!;
+      if (visited.has(cur)) continue;
+      visited.add(cur);
+
+      for (const next of adj.get(cur) || []) {
+        if (!visited.has(next)) q.push(next);
+      }
+    }
+
+    return visited;
+  }
+
+  const highlightedNodes = useMemo(() => {
+    if (!selectedNode) return null;
+
+    const forwardSet = collectReachable(selectedNode.id, adjacency.forward);
+    const backwardSet = collectReachable(selectedNode.id, adjacency.backward);
+
+    return new Set([...Array.from(forwardSet), ...Array.from(backwardSet)]);
+  }, [selectedNode, adjacency]);
+
+  const visualNodes = useMemo(() => {
+    return layoutedGraph.nodes.map((n) => {
+      const raw = n.data.raw;
+
+      const matchesFilter =
+        !filterType || normalizeType(raw?.type) === filterType;
+
+      const isHighlighted = !selectedNode || highlightedNodes?.has(n.id);
+
+      const isFocused = selectedNode?.id === n.id;
+
+      const isDead = raw?.semantic?.dead == true;
+      const fadedByDead = hideDeadCode && isDead;
+
+      const fadedByFunctionFocus =
+        functionFocusedNodes && !functionFocusedNodes.has(n.id);
+
+      return {
+        ...n,
+        data: {
+          ...n.data,
+          label:
+            raw?.type === "function"
+              ? `🟢 Function: ${raw.name ?? "anonymous"}`
+              : (raw?.code ?? "").slice(0, 60),
+          color: colorBySemantic(raw),
+
+          fadedByFilter: !matchesFilter,
+          fadedByHighlight: !isHighlighted,
+          fadedByDead,
+          fadedByFunctionFocus,
+          focused: isFocused,
         },
-      })) as Edge[];
+      };
+    });
+  }, [layoutedGraph, heatmapMode, filterType, selectedNode, highlightedNodes]);
 
-    const fileEdges = buildFileImportEdges(project.fileTree);
+  const visualEdges = useMemo(() => {
+    const hasSelection = !!selectedNode;
 
-    return [...fileEdges, ...execEdges];
-  }, [graphData, project.fileTree]);
+    return layoutedGraph.edges.map((e) => {
+      const onPath =
+        !hasSelection ||
+        (highlightedNodes &&
+          highlightedNodes.has(e.source as string) &&
+          highlightedNodes.has(e.target as string));
 
-  const [edges, setEdges, onEdgesChange] = useEdgesState(edgesFromData);
+      return {
+        ...e,
+        style: {
+          stroke: onPath ? "#2563EB" : "#9CA3AF",
+          strokeWidth: onPath ? 2.5 : 1.2,
+          opacity: onPath ? 1 : 0.4,
+        },
+        markerEnd: { type: MarkerType.ArrowClosed },
+      };
+    });
+  }, [layoutedGraph, highlightedNodes, selectedNode]);
+
   const nodeTypes: NodeTypes = useMemo(
     () => ({
       custom: CustomNode,
@@ -433,52 +603,22 @@ export default function FlowVisualizer({
       trycatch: CustomNode,
       error: CustomNode,
     }),
-    []
+    [],
   );
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null);
 
   const onInit: OnInit = useCallback((instance: ReactFlowInstance) => {
     rfInstanceRef.current = instance;
+
+    requestAnimationFrame(() => {
+      instance.fitView({ padding: 0.2 });
+    });
   }, []);
+
+  const zoomToFit = () => rfInstanceRef.current?.fitView({ padding: 0.2 });
 
   const lastPosRef = useRef<Record<string, { x: number; y: number }>>({});
   const fitTimeoutRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (!nodesFromData.length) {
-      setNodes([]);
-      setEdges(edgesFromData);
-      lastPosRef.current = {};
-      return;
-    }
-
-    const g = getDagreGraph(nodesFromData, edgesFromData, "TB");
-    const positioned = nodesFromData.map((n) => {
-      const nd = g.node(n.id);
-      if (!nd) return n;
-      return { ...n, position: { x: nd.x - NODE_W / 2, y: nd.y - NODE_H / 2 } };
-    });
-
-    lastPosRef.current = Object.fromEntries(
-      positioned.map((p) => [p.id, p.position])
-    );
-    setNodes(positioned);
-    setEdges(edgesFromData);
-
-    if (fitTimeoutRef.current) window.clearTimeout(fitTimeoutRef.current);
-    fitTimeoutRef.current = window.setTimeout(() => {
-      try {
-        rfInstanceRef.current?.fitView({ padding: 0.2 });
-      } catch {}
-    }, 150);
-
-    return () => {
-      if (fitTimeoutRef.current) {
-        window.clearTimeout(fitTimeoutRef.current);
-        fitTimeoutRef.current = null;
-      }
-    };
-  }, [graphData, nodesFromData, edgesFromData]);
 
   useEffect(() => {
     if (explanation) {
@@ -486,15 +626,6 @@ export default function FlowVisualizer({
       if (el) el.scrollIntoView({ behavior: "smooth" });
     }
   }, [explanation]);
-
-  const onConnect = useCallback(
-    (params: any) => setEdges((eds) => addEdge(params, eds)),
-    []
-  );
-
-  const zoomToFit = () => {
-    rfInstanceRef.current?.fitView({ padding: 0.2 });
-  };
 
   const [loadingExplain, setLoadingExplain] = useState(false);
 
@@ -525,9 +656,29 @@ export default function FlowVisualizer({
   const currUsers = useMemo(() => {
     if (!selectedNode) return [];
     return users.filter(
-      (u) => u.uid !== uid && u.focusedNodeId === selectedNode.id
+      (u) => u.uid !== uid && u.focusedNodeId === selectedNode.id,
     );
   }, [users, selectedNode]);
+
+  if (graphMode === "disabled") {
+    return (
+      <div className="p-6 rounded-xl border border-yellow-300 bg-yellow-50">
+        <h3 className="font-semibold text-yellow-800 mb-2">
+          ⚠ Execution graph disabled
+        </h3>
+
+        <p className="text-sm text-yellow-700">
+          This project contains <b>{nodeCount}</b> nodes and <b>{edgeCount}</b>{" "}
+          edges.
+        </p>
+
+        <p className="text-sm text-yellow-700 mt-2">
+          Rendering the full execution graph may freeze your browser. Use
+          file-level navigation and cross-file impact instead.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="mb-6">
@@ -590,6 +741,39 @@ export default function FlowVisualizer({
               <option value="statement">Statements</option>
             </select>
 
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 12,
+                color: "#374151",
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={hideDeadCode}
+                onChange={(e) => setHideDeadCode(e.target.checked)}
+              />
+              Hide dead code
+            </label>
+
+            <button
+              title="legend-panel-toggle-button"
+              onClick={() => setShowLegend((s) => !s)}
+              style={{
+                fontSize: 12,
+                padding: "4px 8px",
+                borderRadius: 6,
+                border: "1px solid #D1D5DB",
+                background: "#F9FAFB",
+                cursor: "pointer",
+              }}
+            >
+              {showLegend ? "Hide legend" : "Show legend"}
+            </button>
+
             <button
               onClick={() => {
                 setHeatmapMode("none");
@@ -614,30 +798,95 @@ export default function FlowVisualizer({
             style={{ flex: 1, position: "relative", overflow: "hidden" }}
           >
             <ReactFlow
-              key={filterType + heatmapMode}
-              nodes={nodes}
-              edges={edges}
+              nodes={visualNodes}
+              edges={visualEdges}
               onNodeClick={onNodeClick}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
+              onPaneClick={onPaneClick}
               nodeTypes={nodeTypes}
-              fitView
               panOnScroll
               zoomOnPinch
               panOnDrag
               style={{ background: "#ffffff" }}
             >
               <Background color="#e0e0e0" gap={20} />
-              <MiniMap
-                nodeColor={(n: Node) => (n.data?.color as string) || "#ccc"}
-                style={{
-                  borderRadius: 12,
-                  boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
-                }}
-              />
+              {graphMode === "full" && (
+                <MiniMap
+                  nodeColor={(n: Node) => (n.data?.color as string) || "#ccc"}
+                  style={{
+                    borderRadius: 12,
+                    boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+                  }}
+                />
+              )}
               <Controls />
             </ReactFlow>
+
+            {showLegend && (
+              <div
+                style={{
+                  position: "absolute",
+                  right: 16,
+                  bottom: 16,
+                  width: 260,
+                  background: "#ffffff",
+                  border: "1px solid #E5E7EB",
+                  borderRadius: 10,
+                  padding: 12,
+                  fontSize: 12,
+                  color: "#374151",
+                  boxShadow: "0 10px 25px rgba(0,0,0,0.1)",
+                  zIndex: 50,
+                }}
+              >
+                <strong style={{ fontSize: 13 }}>Graph Legend</strong>
+
+                <div style={{ marginTop: 8 }}>
+                  <div>
+                    🟢 <b>Function</b> — entry & body
+                  </div>
+                  <div>
+                    🔵 <b>If / Branch</b> — conditional paths
+                  </div>
+                  <div>
+                    🟣 <b>Loop</b> — iterative flow
+                  </div>
+                  <div>
+                    ⚪ <b>Statement</b> — linear execution
+                  </div>
+                </div>
+
+                <hr style={{ margin: "8px 0" }} />
+
+                <div>
+                  <div>
+                    🎨 <b>Heatmap</b>
+                  </div>
+                  <div>• Darker = higher complexity / importance</div>
+                </div>
+
+                <hr style={{ margin: "8px 0" }} />
+
+                <div>
+                  <div>
+                    🌫 <b>Faded nodes</b>
+                  </div>
+                  <div>• Filtered out</div>
+                  <div>• Dead / unreachable</div>
+                  <div>• Outside execution path</div>
+                </div>
+
+                <hr style={{ margin: "8px 0" }} />
+
+                <div>
+                  <div>
+                    ➡ <b>Edges</b>
+                  </div>
+                  <div>• Solid → execution order</div>
+                  <div>• Branch → true / false</div>
+                  <div>• Loop-back → iteration</div>
+                </div>
+              </div>
+            )}
 
             <button
               onClick={zoomToFit}

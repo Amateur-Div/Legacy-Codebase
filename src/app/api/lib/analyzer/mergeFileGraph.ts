@@ -1,35 +1,67 @@
-export type FileGraphs = {
-  file: string;
-  graph: { nodes: any[]; edges: any[] };
-}[];
+import { FlowGraph, FlowNode, FlowEdge } from "./types";
 
-export function mergeFileGraphs(fileGraphs: FileGraphs) {
-  let mergedNodes: any[] = [];
-  let mergedEdges: any[] = [];
+/**
+ * IMPORTANT:
+ * - This function MUST NOT mutate input graphs.
+ * - Node / edge IDs are assumed to be non-normalized at this stage.
+ * - normalizeGraphIds.ts MUST run immediately after this step.
+ *
+ * Semantics:
+ * - Each file gets a synthetic "file root" node.
+ * - No execution order is implied between files.
+ * - Cross-file relationships are added later by injectFileDependencyEdges.ts
+ */
 
-  for (const graphs of fileGraphs) {
-    const { file, graph } = graphs;
+export function mergeFileGraphs(
+  fileGraphs: Array<{
+    file: string;
+    graph: FlowGraph;
+  }>,
+): FlowGraph {
+  const mergedNodes: FlowNode[] = [];
+  const mergedEdges: FlowEdge[] = [];
+
+  for (const { file, graph } of fileGraphs) {
     const { nodes, edges } = graph;
 
     const fileRootId = `file::${file}`;
-    nodes.push({ id: fileRootId, type: "file", name: file, file });
 
-    for (const n of nodes) {
-      mergedNodes.push(n);
-    }
+    const fileRootNode: FlowNode = {
+      id: fileRootId,
+      type: "file",
+      name: file,
+      file,
+    };
+
+    mergedNodes.push(fileRootNode);
+
+    const incomingCount = new Map<string, number>();
     for (const e of edges) {
-      mergedEdges.push(e);
+      incomingCount.set(e.to, (incomingCount.get(e.to) || 0) + 1);
     }
 
-    for (const n of graph.nodes) {
-      mergedEdges.push({
-        id: `${fileRootId}->${n.id}`,
-        from: fileRootId,
-        to: n.id,
-        label: "belongsTo",
-      });
+    for (const node of nodes) {
+      mergedNodes.push(node);
+
+      const isEntryNode = node.type !== "file" && !incomingCount.has(node.id);
+
+      if (isEntryNode) {
+        mergedEdges.push({
+          id: `file-edge::${fileRootId}->${node.id}`,
+          from: fileRootId,
+          to: node.id,
+          label: "contains",
+        });
+      }
+    }
+
+    for (const edge of edges) {
+      mergedEdges.push(edge);
     }
   }
 
-  return { mergedNodes, mergedEdges };
+  return {
+    nodes: mergedNodes,
+    edges: mergedEdges,
+  };
 }

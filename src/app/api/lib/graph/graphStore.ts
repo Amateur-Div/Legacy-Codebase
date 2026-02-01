@@ -4,7 +4,16 @@ const COLLECTION = "graphs";
 
 export async function saveGraph(
   projectId: string,
-  record: { nodes: any[]; edges: any[] },
+  record: {
+    nodes: any[];
+    edges: any[];
+    meta: {
+      nodeCount: number;
+      edgeCount: number;
+      mode: string | null;
+      generatedAt: Date;
+    };
+  },
   ownerId?: string
 ) {
   const client = await clientPromise;

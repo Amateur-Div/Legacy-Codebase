@@ -14,8 +14,26 @@ export default function ProjectAnalyzer({
 }: {
   id: string;
   projectId: any;
-  graphData: { nodes: any[]; edges: any[] };
-  setGraphData: (graphData: { nodes: any[]; edges: any[] }) => void;
+  graphData: {
+    nodes: any[];
+    edges: any[];
+    meta?: {
+      nodeCount: number;
+      edgeCount: number;
+      mode: string | null;
+      generatedAt: Date;
+    };
+  };
+  setGraphData: (graphData: {
+    nodes: any[];
+    edges: any[];
+    meta: {
+      nodeCount: number;
+      edgeCount: number;
+      mode: string | null;
+      generatedAt: Date;
+    };
+  }) => void;
   project: any;
 }) {
   const { jobId, setJobId } = useAuth();
@@ -39,7 +57,7 @@ export default function ProjectAnalyzer({
       const token = await getAuth().currentUser?.getIdToken();
       if (!token) return;
       const url = `/api/projects/${projectId}/jobs/${jobId}/events?token=${encodeURIComponent(
-        token!
+        token!,
       )}`;
 
       console.log("[SSE] connecting to", url);
@@ -77,18 +95,31 @@ export default function ProjectAnalyzer({
 
         evt.addEventListener("job:complete", async (e: MessageEvent) => {
           const data = JSON.parse(e.data);
-          console.log("[SSE] job:complete", data);
+
+          if (data?.result?.graph) {
+            setGraphData(data.result.graph);
+          }
+
           setProgress(100);
           setMessage("Finalizing...");
           setStatus("done");
           setJobId(null);
-          console.log("Job Id set to null");
+
           if (evt) {
             try {
               evt.close();
             } catch {}
             evt = null;
           }
+        });
+
+        evt.addEventListener("job:complete", async (e: MessageEvent) => {
+          const data = JSON.parse(e.data);
+
+          setProgress(100);
+          setMessage("Completed");
+          setStatus("done");
+          setJobId(null);
         });
 
         evt.addEventListener("ping", () => {
@@ -121,6 +152,9 @@ export default function ProjectAnalyzer({
         setProgress(job.progress ?? 0);
         setMessage(job.message ?? "Processing...");
         if (job.status === "done") {
+          if (job.result?.graph) {
+            setGraphData(job.result.graph);
+          }
           if (pollingTimer) {
             window.clearInterval(pollingTimer);
             pollingTimer = null;

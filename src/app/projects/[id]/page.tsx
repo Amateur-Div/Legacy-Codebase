@@ -12,9 +12,11 @@ import ProjectOverview from "../components/ProjectOverview";
 import FileViewerPanel from "../components/FileViewerPanel";
 import { ProjectPresenceProvider } from "../context/ProjectPresenceContext";
 import { CollaboratorsBar } from "../components/CollaboratorsBar";
+import { useProject } from "@/context/ProjectContext";
 
 export default function ProjectDetailPage() {
   const router = useRouter();
+  const { ProjectName } = useProject();
   const { id: projectId } = useParams() as { id: string };
 
   const [project, setProject] = useState<any>(null);
@@ -33,6 +35,7 @@ export default function ProjectDetailPage() {
   const [line, setLine] = useState<number | null>(null);
 
   useEffect(() => {
+    console.log("ProjectName from project context : ", ProjectName);
     const load = async () => {
       const token = await getAuth().currentUser?.getIdToken();
 

@@ -30,9 +30,9 @@ export function instrumentExecutionBabel(code: string): FlowGraph {
 
   const handleStatementSequence = (
     stmts: t.Statement[],
-    parentNode?: FlowNode
+    parentNode?: FlowNode,
   ) => {
-    let prevNode: FlowNode | null = null;
+    let prevNodes: FlowNode[] = [];
 
     for (const s of stmts) {
       const line = s.loc?.start?.line ?? 0;
@@ -46,17 +46,26 @@ export function instrumentExecutionBabel(code: string): FlowGraph {
         continue;
       }
 
-      const nodeType = t.isIfStatement(s)
-        ? "if"
-        : t.isForStatement(s) ||
-          t.isWhileStatement(s) ||
-          t.isDoWhileStatement(s) ||
-          t.isForOfStatement(s) ||
-          t.isForInStatement(s)
-        ? "loop"
-        : t.isFunctionDeclaration(s) || t.isFunctionExpression(s)
-        ? "function"
-        : "statement";
+      if (t.isIfStatement(s)) {
+        const exits = handleIfStatement(
+          s,
+          prevNodes.length > 0 ? prevNodes[0] : parentNode,
+        );
+
+        prevNodes = exits;
+        parentNode = undefined;
+      }
+
+      const nodeType =
+        t.isForStatement(s) ||
+        t.isWhileStatement(s) ||
+        t.isDoWhileStatement(s) ||
+        t.isForOfStatement(s) ||
+        t.isForInStatement(s)
+          ? "loop"
+          : t.isFunctionDeclaration(s) || t.isFunctionExpression(s)
+            ? "function"
+            : "statement";
 
       const node: FlowNode = addNode({
         id: makeId(nodeType),
@@ -66,25 +75,15 @@ export function instrumentExecutionBabel(code: string): FlowGraph {
       });
 
       if (parentNode) {
-        const relation =
-          parentNode.type === "function"
-            ? "executes"
-            : parentNode.type.startsWith("if")
-            ? "branch"
-            : parentNode.type.startsWith("loop")
-            ? "body"
-            : "child";
-        addEdge(parentNode, node, relation);
+        addEdge(parentNode, node, "executes");
       }
 
-      if (prevNode) {
-        addEdge(prevNode, node, "next");
+      for (const p of prevNodes) {
+        addEdge(p, node, "next");
       }
-      prevNode = node;
+      prevNodes = [node];
 
-      if (t.isIfStatement(s)) {
-        handleIfStatement(s as t.IfStatement, node);
-      } else if (
+      if (
         t.isForStatement(s) ||
         t.isWhileStatement(s) ||
         t.isDoWhileStatement(s) ||
@@ -95,6 +94,7 @@ export function instrumentExecutionBabel(code: string): FlowGraph {
       } else if (t.isFunctionDeclaration(s) || t.isFunctionExpression(s)) {
         const fnDecl = s as t.FunctionDeclaration | t.FunctionExpression;
         const fnName = (fnDecl as any).id?.name ?? "anonymous";
+
         const fnNode: FlowNode = addNode({
           id: makeId("fn"),
           type: "function",
@@ -102,53 +102,63 @@ export function instrumentExecutionBabel(code: string): FlowGraph {
           line,
           code: tryGen(fnDecl)?.slice(0, 400),
         });
+
         addEdge(node, fnNode, "declares");
 
-        if (
-          fnDecl.body &&
-          t.isBlockStatement(fnDecl.body) &&
-          fnDecl.body.body.length
-        ) {
-          const first = fnDecl.body.body[0];
-          const fakeFirst: FlowNode = addNode({
-            id: makeId("fn-entry"),
-            type: "fn-entry",
-            code: tryGen(first)?.slice(0, 300),
-            line: first.loc?.start.line ?? line,
-          });
-          addEdge(fnNode, fakeFirst, "entry");
-          handleStatementSequence(fnDecl.body.body, fakeFirst);
+        if (fnDecl.body && t.isBlockStatement(fnDecl.body)) {
+          const body = fnDecl.body.body;
+          if (body.length) {
+            const first = body[0];
+            const entry: FlowNode = addNode({
+              id: makeId("fn-entry"),
+              type: "fn-entry",
+              code: tryGen(first)?.slice(0, 300),
+              line: first.loc?.start.line ?? line,
+            });
+            addEdge(fnNode, entry, "entry");
+            handleStatementSequence(body, entry);
+          }
         }
       }
     }
 
-    return prevNode;
+    return prevNodes;
   };
 
-  const handleIfStatement = (node: t.IfStatement, containerNode: FlowNode) => {
-    const testCode = tryGen(node.test);
+  const handleIfStatement = (
+    node: t.IfStatement,
+    containerNode?: FlowNode | null,
+  ): FlowNode[] => {
+    const exits: FlowNode[] = [];
+
     const ifNode: FlowNode = addNode({
       id: makeId("if"),
       type: "if",
-      code: testCode,
+      code: tryGen(node.test),
       line: node.loc?.start?.line ?? 0,
     });
-    addEdge(containerNode, ifNode, "if");
+
+    if (containerNode) {
+      addEdge(containerNode, ifNode, "if");
+    }
 
     if (node.consequent) {
-      if (t.isBlockStatement(node.consequent)) {
+      if (t.isBlockStatement(node.consequent) && node.consequent.body.length) {
         const first = node.consequent.body[0];
-        if (first) {
-          const entry = addNode({
-            id: makeId("if-true"),
-            type: "if-true",
-            code: tryGen(first)?.slice(0, 300),
-            line: first.loc?.start?.line ?? 0,
-          });
-          addEdge(ifNode, entry, "true");
-          handleStatementSequence(node.consequent.body, entry);
-        }
-      } else {
+        const entry = addNode({
+          id: makeId("if-true"),
+          type: "if-true",
+          code: tryGen(first)?.slice(0, 300),
+          line: first.loc?.start?.line ?? 0,
+        });
+        addEdge(ifNode, entry, "true");
+
+        const branchExits = handleStatementSequence(
+          node.consequent.body,
+          entry,
+        );
+        exits.push(...branchExits);
+      } else if (t.isStatement(node.consequent)) {
         const single = addNode({
           id: makeId("if-true"),
           type: "if-true",
@@ -156,41 +166,45 @@ export function instrumentExecutionBabel(code: string): FlowGraph {
           line: node.consequent.loc?.start?.line ?? 0,
         });
         addEdge(ifNode, single, "true");
-        if (t.isStatement(node.consequent))
-          handleStatementSequence([node.consequent], single);
+        exits.push(single);
       }
+    } else {
+      exits.push(ifNode);
     }
 
     if (node.alternate) {
-      if (t.isBlockStatement(node.alternate)) {
+      if (t.isBlockStatement(node.alternate) && node.alternate.body.length) {
         const first = node.alternate.body[0];
-        if (first) {
-          const entry = addNode({
-            id: makeId("if-false"),
-            type: "if-false",
-            code: tryGen(first)?.slice(0, 300),
-            line: first.loc?.start?.line ?? 0,
-          });
-          addEdge(ifNode, entry, "false");
-          handleStatementSequence(node.alternate.body, entry);
-        }
-      } else {
+        const entry = addNode({
+          id: makeId("if-false"),
+          type: "if-false",
+          code: tryGen(first)?.slice(0, 300),
+          line: first.loc?.start?.line ?? 0,
+        });
+        addEdge(ifNode, entry, "false");
+
+        const branchExits = handleStatementSequence(node.alternate.body, entry);
+        exits.push(...branchExits);
+      } else if (t.isStatement(node.alternate)) {
         const single = addNode({
           id: makeId("if-false"),
           type: "if-false",
           code: tryGen(node.alternate)?.slice(0, 300),
-          line: (node.alternate as any).loc?.start?.line ?? 0,
+          line: node.alternate.loc?.start?.line ?? 0,
         });
         addEdge(ifNode, single, "false");
-        if (t.isStatement(node.alternate))
-          handleStatementSequence([node.alternate], single);
+        exits.push(single);
       }
+    } else {
+      exits.push(ifNode);
     }
+
+    return exits;
   };
 
   const handleLoopStatement = (
     node: t.Statement & any,
-    containerNode: FlowNode
+    containerNode: FlowNode,
   ) => {
     const cond = tryGen(node.test ?? node.right ?? node.init) ?? tryGen(node);
     const loopNode: FlowNode = addNode({
@@ -210,11 +224,12 @@ export function instrumentExecutionBabel(code: string): FlowGraph {
         line: first.loc?.start?.line ?? 0,
       });
       addEdge(loopNode, entry, "body");
-      const lastInner = handleStatementSequence(node.body.body, entry);
 
-      if (lastInner) {
-        addEdge(lastInner, loopNode, "back");
+      const innerExits = handleStatementSequence(node.body.body, entry);
+      for (const exitNode of innerExits) {
+        addEdge(exitNode, loopNode, "back");
       }
+
       const after = addNode({
         id: makeId("after-loop"),
         type: "after-loop",

@@ -18,7 +18,7 @@ export async function loadJob(jobId: string): Promise<Job | null> {
 
 export async function loadJobForOwner(
   jobId: string,
-  ownerId: string
+  ownerId: string,
 ): Promise<Job | null> {
   const db = (await clientPromise).db();
   const collection = db.collection(COLLECTION);

@@ -6,6 +6,8 @@ import { enrichGraphSemantics } from "../analyzer/enrichGraphSemantics";
 import { saveJob } from "./jobStore";
 import { saveGraph } from "../graph/graphStore";
 import { instrumentExecutionBabel } from "../instrumentExecutionBabel";
+import { injectFileDependencyEdges } from "../analyzer/injectFileDependencyEdges";
+import { styleGraphEdges } from "../analyzer/styleGraphEdges";
 
 type JobStatus = "queued" | "running" | "done" | "error" | "cancelled";
 
@@ -29,7 +31,7 @@ function emitJobUpdate(job: Job) {
     "📡 [emitJobUpdate] Emitting job update:",
     job.id,
     job.status,
-    job.progress
+    job.progress,
   );
   const set = JOB_PROGRESS_CALLBACKS.get(job.id);
   if (!set) return;
@@ -89,7 +91,13 @@ export function listJobsForProject(projectId: string) {
   return Array.from(JOBS.values()).filter((j) => j.projectId === projectId);
 }
 
-async function runAnalysisTask(files: Record<string, string>, job: Job) {
+async function runAnalysisTask(
+  projectId: any,
+  files: Record<string, string>,
+  fileTree: any,
+  job: Job,
+  uid: any,
+) {
   try {
     job.status = "running";
     job.progress = 2;
@@ -133,24 +141,53 @@ async function runAnalysisTask(files: Record<string, string>, job: Job) {
     job.message = "Enriching semantics (3/4)";
     emitJobUpdate(job);
 
-    const enriched = enrichGraphSemantics(merged);
+    const enriched = enrichGraphSemantics({
+      mergedNodes: merged.nodes,
+      mergedEdges: merged.edges,
+    });
 
     job.progress = 95;
     job.message = "Saving graph (4/4)";
     emitJobUpdate(job);
 
-    // console.log("About to save graph : ", job.projectId);
-    // await saveGraph(job.projectId, enriched);
+    const withDeps = injectFileDependencyEdges(
+      {
+        mergedNodes: merged.nodes,
+        mergedEdges: merged.edges,
+      },
+      fileTree,
+    );
+
+    const styleGraph = {
+      ...enriched,
+      edges: styleGraphEdges(enriched.edges),
+    };
+
+    const graphMeta = {
+      nodeCount: styleGraph.nodes.length,
+      edgeCount: styleGraph.edges.length,
+      mode: "execution",
+      generatedAt: new Date(),
+    };
+
+    if (styleGraph.nodes.length > 1500) {
+      console.warn(
+        `[Graph] execution graph too large (${styleGraph.nodes.length} nodes)`,
+      );
+    }
+
+    console.log("About to save graph : ", job.projectId);
+    await saveGraph(projectId, { ...styleGraph, meta: graphMeta }, uid);
 
     console.log("Graph saved : ");
 
     job.status = "done";
     job.progress = 100;
     job.message = "Completed";
-    job.result = { graph: enriched };
+    job.result = { graph: styleGraph };
+    emitJobUpdate(job);
 
     await saveJob(job);
-    emitJobUpdate(job);
 
     console.log("Job status : ", job);
 
@@ -166,13 +203,14 @@ async function runAnalysisTask(files: Record<string, string>, job: Job) {
 
 export function enqueueJob(
   projectId: string,
+  fileTree: any,
   files: Record<string, string>,
-  ownerId?: string
+  ownerId?: string,
 ) {
   const job = createJob(projectId, ownerId);
   (async () => {
     try {
-      await runAnalysisTask(files, job);
+      await runAnalysisTask(projectId, files, fileTree, job, ownerId);
     } catch (err) {
       job.status = "error";
       job.error = String((err as any)?.message ?? err);

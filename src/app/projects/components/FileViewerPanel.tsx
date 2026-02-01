@@ -48,7 +48,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import ProjectAnalyzer from "@/app/projects/components/ProjectAnalyzer";
 import { useProjectPresence } from "../context/ProjectPresenceContext";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   patchGraphOnFileDelete,
   patchGraphOnFileRename,
@@ -108,7 +107,7 @@ export default function FileViewerPanel({
     Record<number, { top: number; left: number }>
   >({});
   const [commentHeights, setCommentHeights] = useState<Record<number, number>>(
-    {}
+    {},
   );
   const commentRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const [innerScrollLeft, setInnerScrollLeft] = useState(0);
@@ -191,7 +190,7 @@ export default function FileViewerPanel({
         const existing = Array.from(map.values()).find(
           (b) =>
             (b.start == c.start && b.end === c.end) ||
-            (b.end === c.end && b.start < c.start)
+            (b.end === c.end && b.start < c.start),
         );
 
         if (!existing) {
@@ -211,7 +210,7 @@ export default function FileViewerPanel({
       Object.keys(comments ?? {}).forEach((lnStr) => {
         const ln = Number(lnStr);
         const el = container.querySelector(
-          `[data-line-number="${ln}"]`
+          `[data-line-number="${ln}"]`,
         ) as HTMLElement | null;
         if (!el) return;
         next[ln] = { top: el.offsetTop + el.offsetHeight, left: el.offsetLeft };
@@ -244,7 +243,7 @@ export default function FileViewerPanel({
 
     foldBlocks.forEach((block) => {
       const el = container.querySelector(
-        `[data-line-number="${block.start}"]`
+        `[data-line-number="${block.start}"]`,
       ) as HTMLElement | null;
       if (!el) return;
       const toggleTop =
@@ -275,7 +274,7 @@ export default function FileViewerPanel({
             headers: {
               Authorization: `Bearer ${token}`,
             },
-          }
+          },
         );
 
         const data = await res.json();
@@ -351,7 +350,7 @@ export default function FileViewerPanel({
 
     const lines = fileContent.split("\n");
     const matchIndex = lines.findIndex((line) =>
-      line.toLowerCase().includes(term.toLowerCase())
+      line.toLowerCase().includes(term.toLowerCase()),
     );
 
     if (matchIndex !== -1) {
@@ -372,7 +371,7 @@ export default function FileViewerPanel({
     if (!codeContainerRef.current) return;
 
     const lineElement = codeContainerRef.current.querySelector(
-      `[data-line-number="${lineNumber}"]`
+      `[data-line-number="${lineNumber}"]`,
     );
 
     if (lineElement) {
@@ -389,7 +388,7 @@ export default function FileViewerPanel({
       .map((node) =>
         node.children
           ? { ...node, children: removeFileFromTree(node.children, targetPath) }
-          : node
+          : node,
       );
   };
 
@@ -442,7 +441,7 @@ export default function FileViewerPanel({
   function updateFileTreeForRename(
     nodes: any[],
     oldPath: string,
-    newPath: string
+    newPath: string,
   ): any {
     return nodes.map((node) => {
       if (node.fullPath === oldPath) {
@@ -470,7 +469,7 @@ export default function FileViewerPanel({
         headers: {
           Authorization: `Bearer ${token}`,
         },
-      }
+      },
     );
 
     const data = await res.json();
@@ -771,7 +770,7 @@ export default function FileViewerPanel({
                             ))}
                           </ul>
                         </div>
-                      )
+                      ),
                   )}
                 </div>
               </details>
@@ -833,7 +832,7 @@ export default function FileViewerPanel({
                           <li key={i} className="font-mono text-xs">
                             {b.source}
                           </li>
-                        )
+                        ),
                       )}
                     </ul>
 
@@ -973,7 +972,7 @@ export default function FileViewerPanel({
               {Object.entries(comments ?? {}).map(([lnStr, texts]) => {
                 const ln = Number(lnStr);
                 const lineEl = codeContainerRef.current?.querySelector(
-                  `[data-line-number="${ln}"]`
+                  `[data-line-number="${ln}"]`,
                 ) as HTMLElement | null;
                 if (!lineEl) return null;
 
@@ -1159,7 +1158,7 @@ export default function FileViewerPanel({
                         <div
                           className={`flex items-center gap-2 mb-1 font-semibold ${color.replace(
                             "700",
-                            "600"
+                            "600",
                           )}`}
                         >
                           {icon}
@@ -1173,7 +1172,7 @@ export default function FileViewerPanel({
                           ))}
                         </ul>
                       </div>
-                    )
+                    ),
                 )}
               </div>
             )}

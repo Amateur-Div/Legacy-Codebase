@@ -3,12 +3,10 @@ import clientPromise from "@/lib/mongoClient";
 import { assertProjectAccess } from "@/app/api/lib/projectAccess";
 import { authMiddleware } from "@/lib/auth-server";
 import { ObjectId } from "bson";
-import User from "@/models/User";
-import { connectToDatabase } from "@/lib/mongodb";
 
 export async function POST(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> },
 ) {
   const tokenHeader = req.headers.get("authorization") || "";
   const token = tokenHeader.replace("Bearer ", "");
@@ -31,7 +29,7 @@ export async function POST(
         error:
           "You are not allowed to send invites, only project admin can send invites.",
       },
-      { status: err.status || 403 }
+      { status: err.status || 403 },
     );
   }
 
@@ -41,7 +39,7 @@ export async function POST(
   if (!email || !["viewer", "editor"].includes(role)) {
     return NextResponse.json(
       { error: "Invalid invite payload" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -61,7 +59,7 @@ export async function POST(
           invitedBy: uid,
         },
       },
-    }
+    },
   );
 
   return NextResponse.json({ ok: true, message: "Invite created" });

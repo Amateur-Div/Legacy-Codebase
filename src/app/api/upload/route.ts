@@ -137,11 +137,7 @@ function detectTags(packageInfo: any, fileTree: any[]): string[] {
   return Array.from(tags);
 }
 
-async function buildFileTree(
-  files: string[],
-  rootDir: string,
-  perFileGraphs: any[]
-) {
+async function buildFileTree(files: string[], rootDir: string) {
   const tree: any[] = [];
 
   for (const file of files) {
@@ -184,9 +180,7 @@ async function buildFileTree(
             const ext = part.split(".").pop()?.toLowerCase();
             if (["js", "ts", "jsx", "tsx"].includes(ext || "")) {
               trackExecution = instrumentExecutionBabel(content);
-              perFileGraphs.push({ file: fullPath, graph: trackExecution });
               highlights = extractHighlights(content);
-
               const symbols = extractStructureBabel(fullPath, content);
               imports = symbols.imports;
               functions = symbols.functions;
@@ -299,19 +293,8 @@ export async function POST(req: NextRequest) {
       return results;
     };
 
-    const perFileGraphs: any[] = [];
     const allFiles = walk(extractRoot);
-    const fileTree = await buildFileTree(allFiles, extractRoot, perFileGraphs);
-
-    const mergedGraph = mergeFileGraphs(perFileGraphs);
-    const withDeps = injectFileDependencyEdges(mergedGraph, fileTree);
-    const enrichedGraph = enrichGraphSemantics(withDeps);
-    const styleGraph = {
-      ...enrichedGraph,
-      edges: styleGraphEdges(enrichedGraph.edges),
-    };
-
-    await saveGraph(projectId, styleGraph, uid);
+    const fileTree = await buildFileTree(allFiles, extractRoot);
 
     const filesMap: Record<string, string> = {};
     for (const f of allFiles) {
@@ -321,14 +304,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const job = await enqueueJob(projectId, filesMap, uid);
+    const job = await enqueueJob(projectId, fileTree, filesMap, uid);
 
     const entryPoints: string[] = [];
     const walkTree = (nodes: any[]) =>
       nodes.forEach((n) =>
         n.type === "file" && n.entry
           ? entryPoints.push(n.fullPath)
-          : n.children && walkTree(n.children)
+          : n.children && walkTree(n.children),
       );
 
     walkTree(fileTree);
@@ -367,7 +350,7 @@ export async function POST(req: NextRequest) {
     console.error("[UPLOAD_ERROR]", err);
     return NextResponse.json(
       { error: "Something went wrong" },
-      { status: 500 }
+      { status: 500 },
     );
   } finally {
     if (extractPath && fs.existsSync(extractPath)) {

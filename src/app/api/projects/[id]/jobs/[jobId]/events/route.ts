@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(
   req: NextRequest,
-  context: { params: Promise<{ projectId: string; jobId: string }> }
+  context: { params: Promise<{ projectId: string; jobId: string }> },
 ) {
   const url = new URL(req.url);
   const token = url.searchParams.get("token");
@@ -30,7 +30,7 @@ export async function GET(
   } catch (err: any) {
     return NextResponse.json(
       { error: err.message },
-      { status: err.status || 403 }
+      { status: err.status || 403 },
     );
   }
 
