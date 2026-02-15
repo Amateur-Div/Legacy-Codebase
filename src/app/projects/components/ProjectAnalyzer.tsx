@@ -4,6 +4,7 @@ import FlowVisualizer from "./FlowVisualizer";
 import { ReactFlowProvider } from "reactflow";
 import { useAuth } from "@/context/AuthContext";
 import { getAuth } from "firebase/auth";
+import { FlowGraph } from "@/app/api/lib/analyzer/types";
 
 export default function ProjectAnalyzer({
   id,
@@ -14,16 +15,7 @@ export default function ProjectAnalyzer({
 }: {
   id: string;
   projectId: any;
-  graphData: {
-    nodes: any[];
-    edges: any[];
-    meta?: {
-      nodeCount: number;
-      edgeCount: number;
-      mode: string | null;
-      generatedAt: Date;
-    };
-  };
+  graphData: FlowGraph;
   setGraphData: (graphData: {
     nodes: any[];
     edges: any[];

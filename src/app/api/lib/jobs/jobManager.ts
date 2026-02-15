@@ -8,6 +8,11 @@ import { saveGraph } from "../graph/graphStore";
 import { instrumentExecutionBabel } from "../instrumentExecutionBabel";
 import { injectFileDependencyEdges } from "../analyzer/injectFileDependencyEdges";
 import { styleGraphEdges } from "../analyzer/styleGraphEdges";
+import {
+  computeFileImportance,
+  findCircularDependencies,
+  findDeadFiles,
+} from "../impactEngine";
 
 type JobStatus = "queued" | "running" | "done" | "error" | "cancelled";
 
@@ -141,15 +146,6 @@ async function runAnalysisTask(
     job.message = "Enriching semantics (3/4)";
     emitJobUpdate(job);
 
-    const enriched = enrichGraphSemantics({
-      mergedNodes: merged.nodes,
-      mergedEdges: merged.edges,
-    });
-
-    job.progress = 95;
-    job.message = "Saving graph (4/4)";
-    emitJobUpdate(job);
-
     const withDeps = injectFileDependencyEdges(
       {
         mergedNodes: merged.nodes,
@@ -158,15 +154,33 @@ async function runAnalysisTask(
       fileTree,
     );
 
+    const enriched = enrichGraphSemantics({
+      mergedNodes: withDeps.mergedNodes,
+      mergedEdges: withDeps.mergedEdges,
+    });
+
+    job.progress = 95;
+    job.message = "Saving graph (4/4)";
+    emitJobUpdate(job);
+
     const styleGraph = {
       ...enriched,
       edges: styleGraphEdges(enriched.edges),
     };
 
+    const deadFiles = findDeadFiles(styleGraph);
+    const circularDeps = findCircularDependencies(styleGraph);
+    const importanceRanking = computeFileImportance(styleGraph).slice(0, 20);
+
     const graphMeta = {
       nodeCount: styleGraph.nodes.length,
       edgeCount: styleGraph.edges.length,
       mode: "execution",
+      intelligence: {
+        deadFiles,
+        circularDependencies: circularDeps,
+        importanceRanking,
+      },
       generatedAt: new Date(),
     };
 

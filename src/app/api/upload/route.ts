@@ -14,12 +14,7 @@ import { detectLanguage, getLanguageColor } from "../lib/language";
 import { extractStructureBabel } from "../lib/extractStructureBable";
 import { instrumentExecutionBabel } from "../lib/instrumentExecutionBabel";
 import { attachCrossFileImpact } from "../lib/buildCrossFileImpactMap";
-import { mergeFileGraphs } from "../lib/analyzer/mergeFileGraph";
-import { enrichGraphSemantics } from "../lib/analyzer/enrichGraphSemantics";
-import { saveGraph } from "../lib/graph/graphStore";
 import { enqueueJob } from "../lib/jobs/jobManager";
-import { injectFileDependencyEdges } from "../lib/analyzer/injectFileDependencyEdges";
-import { styleGraphEdges } from "../lib/analyzer/styleGraphEdges";
 
 function extractHighlights(code: string) {
   const ast = babelParser.parse(code, {

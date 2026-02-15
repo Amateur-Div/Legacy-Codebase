@@ -20,10 +20,26 @@ export type FlowEdge = {
   label?: string;
 };
 
+export type GraphIntelligence = {
+  deadFiles: string[];
+  circularDependencies: string[][];
+  importanceRanking: { fileId: string; score: number }[];
+};
+
+export type FlowGraphMeta = {
+  file?: string;
+  projectId?: string;
+  nodeCount?: number;
+  edgeCount?: number;
+  mode?: string | null;
+  generatedAt?: Date;
+  intelligence?: GraphIntelligence;
+};
+
 export type FlowGraph = {
   nodes: FlowNode[];
   edges: FlowEdge[];
-  meta?: { file?: string; projectId?: string };
+  meta?: FlowGraphMeta;
 };
 
 export type ProjectFlow = {

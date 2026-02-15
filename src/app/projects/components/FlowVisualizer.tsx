@@ -22,20 +22,12 @@ import dagre from "dagre";
 import "reactflow/dist/style.css";
 import { getAuth } from "firebase/auth";
 import { useProjectPresence } from "../context/ProjectPresenceContext";
+import { FlowGraph } from "@/app/api/lib/analyzer/types";
 
 type GraphMode = "full" | "lite" | "disabled";
 
 interface Props {
-  graphData: {
-    nodes: any[];
-    edges: any[];
-    meta?: {
-      nodeCount: number;
-      edgeCount: number;
-      mode: string | null;
-      generatedAt: Date;
-    };
-  };
+  graphData: FlowGraph;
   setGraphData: (graphData: {
     nodes: any[];
     edges: any[];

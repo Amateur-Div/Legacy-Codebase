@@ -32,13 +32,68 @@ import {
   NumericLiteral,
   CallExpression,
   ObjectProperty,
+  ClassDeclaration,
+  ReturnStatement,
+  TSModuleBlock,
+  TSTypeLiteral,
 } from "@babel/types";
+
+interface ExtractContext {
+  filePath: string;
+  code: string;
+
+  imports: SymbolInfo[];
+  functions: SymbolInfo[];
+  classes: SymbolInfo[];
+  components: SymbolInfo[];
+  interfaces: SymbolInfo[];
+  exports: SymbolInfo[];
+  blocks: SymbolInfo[];
+  apis: ApiInfo[];
+  schemas: SchemaInfo[];
+
+  seen: {
+    imports: Set<string>;
+    functions: Set<string>;
+    classes: Set<string>;
+    interfaces: Set<string>;
+    components: Set<string>;
+    exports: Set<string>;
+    blocks: Set<string>;
+    apis: Set<string>;
+    schemas: Set<string>;
+  };
+
+  errors: {
+    message: string;
+    line?: number;
+    column?: number;
+  }[];
+}
+
+export interface ExtractStructureResult {
+  imports: SymbolInfo[];
+  functions: SymbolInfo[];
+  classes: SymbolInfo[];
+  components: SymbolInfo[];
+  interfaces: SymbolInfo[];
+  exports: SymbolInfo[];
+  blocks: SymbolInfo[];
+  apis: ApiInfo[];
+  schemas: SchemaInfo[];
+  errors?: {
+    message: string;
+    line?: number;
+    column?: number;
+  }[];
+}
 
 type ApiFramework = "express" | "next" | "nestjs" | "unknown" | string;
 type SchemaFramework = "mongoose" | "prisma" | "zod" | "yup" | "ts";
 type SymbolType = "function" | "class" | "interface";
 
 interface ApiInfo {
+  id: string;
   method: string;
   path: string;
   start: number;
@@ -56,6 +111,7 @@ interface SchemaField {
 }
 
 interface SchemaInfo {
+  id: string;
   name: string;
   framework: SchemaFramework;
   start: number;
@@ -64,6 +120,7 @@ interface SchemaInfo {
 }
 
 interface SymbolInfo {
+  id: string;
   name: string;
   start: number;
   end: number | null;
@@ -89,31 +146,993 @@ const HTTP_METHODS = new Set([
   "ALL",
 ]);
 
-export function extractStructureBabel(filePath: string, code: string) {
-  const ast = babelParser.parse(code, {
-    sourceType: "unambiguous",
-    plugins: ["jsx", "typescript", "decorators-legacy"],
-  });
+function createContext(filePath: string, code: string): ExtractContext {
+  return {
+    filePath,
+    code,
 
-  const functions: SymbolInfo[] = [];
-  const classes: SymbolInfo[] = [];
-  const components: SymbolInfo[] = [];
-  const interfaces: SymbolInfo[] = [];
-  const exports: SymbolInfo[] = [];
-  const imports: SymbolInfo[] = [];
-  const blocks: SymbolInfo[] = [];
-  const apis: ApiInfo[] = [];
-  const schemas: SchemaInfo[] = [];
+    imports: [],
+    functions: [],
+    classes: [],
+    components: [],
+    interfaces: [],
+    exports: [],
+    blocks: [],
+    apis: [],
+    schemas: [],
 
-  const seenFunctions = new Set<string>();
-  const seenClasses = new Set<string>();
-  const seenInterfaces = new Set<string>();
-  const seenComponents = new Set<string>();
-  const seenExports = new Set<string>();
-  const seenImports = new Set<string>();
-  const seenBlocks = new Set<string>();
-  const seenApis = new Set<string>();
-  const seenSchemas = new Set<string>();
+    seen: {
+      imports: new Set(),
+      functions: new Set(),
+      classes: new Set(),
+      interfaces: new Set(),
+      components: new Set(),
+      exports: new Set(),
+      blocks: new Set(),
+      apis: new Set(),
+      schemas: new Set(),
+    },
+
+    errors: [],
+  };
+}
+
+function createImportVisitor(ctx: ExtractContext) {
+  return {
+    enter(path: any) {
+      const node = path.node;
+
+      if (isImportDeclaration(node) && isStringLiteral(node.source)) {
+        const val = node.source.value;
+        if (!ctx.seen.imports.has(val)) {
+          ctx.seen.imports.add(val);
+          ctx.imports.push({
+            name: val,
+            start: node.loc?.start.line ?? 0,
+            end: node.loc?.end.line ?? null,
+          });
+        }
+      }
+
+      if (
+        isCallExpression(node) &&
+        node.callee.type === "Identifier" &&
+        node.callee.name === "require" &&
+        node.arguments.length === 1 &&
+        isStringLiteral(node.arguments[0])
+      ) {
+        const val = node.arguments[0].value;
+        if (!ctx.seen.imports.has(val)) {
+          ctx.seen.imports.add(val);
+          ctx.imports.push({
+            name: val,
+            start: node.loc?.start.line ?? 0,
+            end: node.loc?.end.line ?? null,
+          });
+        }
+      }
+
+      if (isImportExpression(node) && isStringLiteral((node as any).source)) {
+        const val = (node as any).source.value;
+        if (!ctx.seen.imports.has(val)) {
+          ctx.seen.imports.add(val);
+          ctx.imports.push({
+            name: val,
+            start: node.loc?.start.line ?? 0,
+            end: node.loc?.end.line ?? null,
+          });
+        }
+      }
+    },
+  };
+}
+
+export function extractStructureBabel(
+  filePath: string,
+  code: string,
+): ExtractStructureResult {
+  if (!code || code.trim().length === 0) {
+    return {
+      imports: [],
+      functions: [],
+      classes: [],
+      components: [],
+      interfaces: [],
+      exports: [],
+      blocks: [],
+      apis: [],
+      schemas: [],
+    };
+  }
+
+  let ast;
+
+  try {
+    ast = babelParser.parse(code, {
+      sourceType: "unambiguous",
+      plugins: ["jsx", "typescript", "decorators-legacy"],
+    });
+  } catch (err: any) {
+    return {
+      imports: [],
+      functions: [],
+      classes: [],
+      components: [],
+      interfaces: [],
+      exports: [],
+      blocks: [],
+      apis: [],
+      schemas: [],
+      errors: [
+        {
+          message: err.message ?? "Failed to parse file",
+          line: err.loc?.line,
+          column: err.loc?.column,
+        },
+      ],
+    };
+  }
+
+  const ctx = createContext(filePath, code);
+
+  function createSymbolVisitor(ctx: ExtractContext) {
+    return {
+      FunctionDeclaration(path: NodePath<FunctionDeclaration>) {
+        addSymbol(path.node.id?.name, {
+          type: "function",
+          start: path.node.loc?.start.line,
+          end: path.node.loc?.end.line,
+        });
+        if (path.node.id?.name && path.node.body) {
+          addBlock(
+            path.node.id.name,
+            locStart(path.node.body),
+            locEnd(path.node.body),
+          );
+        }
+
+        if (returnsJSXFromPath(path)) {
+          const key = makeKey(
+            path.node.id!?.name,
+            locStart(path.node),
+            locEnd(path.node),
+          );
+
+          if (!ctx.seen.components.has(key)) {
+            ctx.components.push({
+              name: path.node.id!.name,
+              start: locStart(path.node),
+              end: locEnd(path.node),
+            });
+            ctx.seen.components.add(key);
+          }
+        }
+      },
+
+      VariableDeclarator(path: NodePath<VariableDeclarator>) {
+        const { id, init } = path.node;
+
+        if (init?.type === "NewExpression" || init?.type === "CallExpression") {
+          const callee = init.callee;
+          const isSchemaCtor =
+            (callee.type === "Identifier" && callee.name === "Schema") ||
+            (callee.type === "MemberExpression" &&
+              (callee.object as any)?.name === "mongoose" &&
+              (callee.property as any)?.name === "Schema");
+
+          if (isSchemaCtor && init.arguments && init.arguments.length > 0) {
+            const arg0 = init.arguments[0];
+            const arg1 = init.arguments[1];
+            if (arg0 && arg0.type === "ObjectExpression") {
+              const start = path.node.loc?.start.line || 0;
+              const end = path.node.loc?.end.line || null;
+              const name =
+                (id.type === "Identifier" && id.name) || "AnonymousSchema";
+              const fields = extractObjectFields(arg0 as ObjectExpression);
+
+              if (schemaOptionsHaveTimestamps(arg1)) {
+                if (!fields.some((f) => f.name === "createdAt"))
+                  fields.push({
+                    name: "createdAt",
+                    type: "Date",
+                    raw: "timestamps",
+                    auto: true,
+                  });
+                if (!fields.some((f) => f.name === "updatedAt"))
+                  fields.push({
+                    name: "updatedAt",
+                    type: "Date",
+                    raw: "timestamps",
+                    auto: true,
+                  });
+              }
+
+              addSchema({ name, framework: "mongoose", start, end, fields });
+            }
+          }
+        }
+
+        if (
+          init &&
+          init.type === "CallExpression" &&
+          init.callee.type === "MemberExpression" &&
+          init.callee.property.type === "Identifier" &&
+          init.callee.property.name === "object"
+        ) {
+          const framework =
+            (init.callee.object as Identifier).name === "z" ? "zod" : "yup";
+          const arg0 = init.arguments?.[0];
+          if (arg0 && arg0.type === "ObjectExpression") {
+            const start = locStart(init);
+            const end = locEnd(init);
+            const schemaName =
+              id.type === "Identifier"
+                ? id.name
+                : `${framework}.object@${start}`;
+            const fields = extractObjectFields(arg0 as ObjectExpression);
+            addSchema({ name: schemaName, framework, start, end, fields });
+          }
+        }
+
+        if (init?.type === "ObjectExpression") {
+          const start = path.node.loc?.start.line || 0;
+          const end = path.node.loc?.end.line || null;
+          const name = id.type === "Identifier" ? id.name : "objSchema";
+          if (/schema/i.test(String(name))) {
+            const fields = extractObjectFields(init as ObjectExpression);
+            addSchema({ name, framework: "mongoose", start, end, fields });
+          }
+        }
+
+        if (
+          id.type === "Identifier" &&
+          init &&
+          ["ArrowFunctionExpression", "FunctionExpression"].includes(init.type)
+        ) {
+          if (returnsJSXFromPath(path)) {
+            const key = makeKey(id.name, locStart(init), locEnd(init));
+
+            if (!ctx.seen.components.has(key)) {
+              ctx.seen.components.add(key);
+              ctx.components.push({
+                name: id.name,
+                start: locStart(init),
+                end: locEnd(init),
+              });
+            }
+          }
+
+          addSymbol(id.name, {
+            type: "function",
+            start: path.node.loc?.start.line,
+            end: path.node.loc?.end.line,
+          });
+          addFnBodyAsBlock(
+            id.name,
+            init as ArrowFunctionExpression | FunctionExpression,
+          );
+        }
+      },
+
+      ClassDeclaration(path: NodePath<ClassDeclaration>) {
+        addSymbol(path.node.id?.name, {
+          type: "class",
+          start: path.node.loc?.start.line,
+          end: path.node.loc?.end.line,
+        });
+
+        const node: any = path.node;
+        const className = node.id?.name || "AnonymousController";
+
+        let basePath = "/";
+        if (Array.isArray(node.decorators)) {
+          const controllerDec = node.decorators.find((dec: any) => {
+            const expr = dec.expression;
+            return (
+              expr &&
+              expr.type === "CallExpression" &&
+              expr.callee.type === "Identifier" &&
+              expr.callee.name === "Controller"
+            );
+          });
+
+          if (controllerDec?.expression?.type === "CallExpression") {
+            basePath =
+              getStringFromNode(controllerDec.expression.arguments?.[0]) || "/";
+          }
+        }
+
+        const superClass = path.node.superClass;
+        const isReactClass =
+          superClass &&
+          ((superClass.type === "MemberExpression" &&
+            superClass.object.type === "Identifier" &&
+            superClass.object.name === "React") ||
+            (superClass.type === "Identifier" &&
+              ["Component", "PureComponent"].includes(superClass.name)));
+
+        if (isReactClass && path.node.id?.name) {
+          const key = makeKey(
+            path.node.id.name,
+            locStart(path.node),
+            locEnd(path.node),
+          );
+          if (!ctx.seen.components.has(key)) {
+            ctx.components.push({
+              name: path.node.id.name,
+              start: locStart(path.node),
+              end: locEnd(path.node),
+            });
+            ctx.seen.components.add(key);
+          }
+        }
+
+        const elems = node.body?.body || [];
+        for (const elem of elems) {
+          if (!elem.decorators || elem.decorators.length === 0) continue;
+
+          for (const mDec of elem.decorators) {
+            const expr = mDec.expression;
+            if (!expr) continue;
+
+            let decName: string | null = null;
+            let argNode: any = null;
+
+            if (expr.type === "CallExpression") {
+              if (expr.callee.type === "Identifier") decName = expr.callee.name;
+              else if (expr.callee.type === "MemberExpression")
+                decName = expr.callee.property?.name ?? null;
+              argNode = expr.arguments?.[0];
+            } else if (expr.type === "Identifier") {
+              decName = expr.name;
+            } else if (expr.type === "MemberExpression") {
+              decName = expr.property?.name ?? null;
+            }
+
+            if (!decName) continue;
+            const methodName = decName.toUpperCase();
+
+            if (!HTTP_METHODS.has(methodName)) continue;
+
+            const methodPathRaw = argNode
+              ? getStringFromNode(argNode) || "/"
+              : null;
+
+            const methodPath = methodPathRaw || "/";
+            const fullPath = joinPaths(basePath, methodPath);
+
+            ctx.apis.push({
+              method: methodName,
+              path: fullPath,
+              start: elem.loc?.start?.line ?? 0,
+              end: elem.loc?.end?.line ?? null,
+              framework: "nestjs",
+              controller: className,
+            });
+          }
+        }
+      },
+
+      ExportNamedDeclaration(path: NodePath<ExportNamedDeclaration>) {
+        const decl = path.node.declaration as any;
+
+        if (decl) {
+          if (decl.type === "FunctionDeclaration" && decl.id?.name) {
+            const method = decl.id.name.toUpperCase();
+            if (HTTP_METHODS.has(method)) {
+              const start = locStart(decl);
+              const end = locEnd(decl);
+              addApi({ method, path: "/", start, end, framework: "next" });
+              addBlock(`${method} /`, start, end);
+            }
+
+            addSymbol(decl.id.name, {
+              type: "function",
+              addToExports: true,
+              start: decl.loc?.start.line,
+              end: decl.loc?.end.line,
+            });
+            if (decl.body)
+              addBlock(decl.id.name, locStart(decl.body), locEnd(decl.body));
+          } else if (decl.type === "ClassDeclaration" && decl.id?.name) {
+            addSymbol(decl.id.name, {
+              type: "class",
+              addToExports: true,
+              start: decl.loc?.start.line,
+              end: decl.loc?.end.line,
+            });
+          } else if (
+            decl.type === "TSInterfaceDeclaration" ||
+            decl.type === "TSTypeAliasDeclaration"
+          ) {
+            addSymbol(decl.id.name, {
+              type: "interface",
+              addToExports: true,
+              start: decl.loc?.start.line,
+              end: decl.loc?.end.line,
+            });
+          } else if (decl.type === "VariableDeclaration") {
+            decl.declarations.forEach((d: any) => {
+              const name = d.id?.name;
+              if (!name) return;
+              addSymbol(name, {
+                addToExports: true,
+                start: d.loc?.start.line,
+                end: d.loc?.end.line,
+              });
+
+              const init = d.init;
+              if (
+                init?.type === "ArrowFunctionExpression" ||
+                init?.type === "FunctionExpression"
+              ) {
+                addSymbol(name, {
+                  type: "function",
+                  start: d.loc?.start.line,
+                  end: d.loc?.end.line,
+                });
+                addFnBodyAsBlock(name, init);
+              } else if (init?.type === "ClassExpression") {
+                addSymbol(name, {
+                  type: "class",
+                  start: d.loc?.start.line,
+                  end: d.loc?.end.line,
+                });
+              }
+
+              if (
+                d.id?.type === "Identifier" &&
+                HTTP_METHODS.has(d.id?.name.toUpperCase()) &&
+                init &&
+                (init.type === "ArrowFunctionExpression" ||
+                  init.type === "FunctionExpression")
+              ) {
+                addApi({
+                  method: d.id?.name.toUpperCase(),
+                  path: "/",
+                  start: locStart(d),
+                  end: locEnd(d),
+                  framework: "next",
+                });
+              }
+            });
+          }
+        }
+
+        for (const spec of path.node.specifiers) {
+          if (
+            spec.type === "ExportSpecifier" &&
+            spec.exported.type === "Identifier"
+          ) {
+            addSymbol(spec.exported.name, {
+              addToExports: true,
+              start: spec.loc?.start.line,
+              end: spec.loc?.end.line,
+            });
+          }
+        }
+      },
+
+      ExportDefaultDeclaration(path: NodePath<ExportDefaultDeclaration>) {
+        const decl: any = path.node.declaration;
+        const start = decl?.loc?.start.line ?? path.node.loc?.start.line;
+        const end = decl?.loc?.end.line ?? path.node.loc?.end.line;
+
+        if (
+          filePath.includes("/app/api/") ||
+          filePath.includes("/pages/api/")
+        ) {
+          if (
+            decl &&
+            (decl.type === "FunctionDeclaration" ||
+              decl.type === "FunctionExpression" ||
+              decl.type === "ArrowFunctionExpression")
+          ) {
+            const methods = Array.from(
+              collectReqMethods(decl.body || decl, new Set()),
+            );
+            if (methods.length > 0) {
+              methods.forEach((m) => {
+                addApi({
+                  method: m,
+                  path: "/",
+                  start,
+                  end,
+                  framework: "next",
+                });
+              });
+            } else {
+              addApi({
+                method: "ALL",
+                path: "/",
+                start,
+                end,
+                framework: "next",
+              });
+            }
+          }
+        }
+
+        if (decl?.id?.name) {
+          addSymbol(decl.id.name, {
+            addToExports: true,
+            type:
+              decl.type === "FunctionDeclaration"
+                ? "function"
+                : decl.type === "ClassDeclaration"
+                  ? "class"
+                  : undefined,
+            start,
+            end,
+          });
+          if (decl.type === "FunctionDeclaration" && decl.body) {
+            addBlock(decl.id.name, locStart(decl.body), locEnd(decl.body));
+          }
+        } else if (decl?.name) {
+          addSymbol(decl.name, { addToExports: true, start, end });
+        }
+      },
+
+      AssignmentExpression(path: NodePath<AssignmentExpression>) {
+        const left = path.node.left as any;
+        const right = path.node.right as any;
+        const start = path.node.loc?.start.line;
+        const end = path.node.loc?.end.line;
+
+        if (
+          left.type === "MemberExpression" &&
+          left.object.type === "Identifier" &&
+          ["exports", "module"].includes(left.object.name)
+        ) {
+          let key = "";
+          if (left.property.type === "Identifier") key = left.property.name;
+          else if (left.property.type === "StringLiteral")
+            key = left.property.value;
+
+          const isObjectExport =
+            left.object.name === "module" &&
+            left.property.type === "Identifier" &&
+            left.property.name === "exports" &&
+            right.type === "ObjectExpression";
+
+          if (isObjectExport) {
+            for (const prop of right.properties as any[]) {
+              const pKey = prop.key?.name || prop.key?.value;
+              if (!pKey) continue;
+              addSymbol(pKey, {
+                addToExports: true,
+                start: prop.loc?.start.line,
+                end: prop.loc?.end.line,
+              });
+
+              const val = prop.value;
+              if (
+                val.type === "FunctionExpression" ||
+                val.type === "ArrowFunctionExpression"
+              ) {
+                addSymbol(pKey, {
+                  type: "function",
+                  start: val.loc?.start.line,
+                  end: val.loc?.end.line,
+                });
+                addFnBodyAsBlock(pKey, val);
+              } else if (val.type === "ClassExpression") {
+                addSymbol(pKey, {
+                  type: "class",
+                  start: val.loc?.start.line,
+                  end: val.loc?.end.line,
+                });
+              }
+            }
+          } else if (key) {
+            addSymbol(key, { addToExports: true, start, end });
+
+            if (
+              right.type === "FunctionExpression" ||
+              right.type === "ArrowFunctionExpression"
+            ) {
+              addSymbol(key, { type: "function", start, end });
+              addFnBodyAsBlock(key, right);
+            } else if (right.type === "ClassExpression") {
+              addSymbol(key, { type: "class", start, end });
+            }
+          }
+        }
+      },
+    };
+  }
+
+  function createBlockVisitor(ctx: ExtractContext) {
+    return {
+      BlockStatement(path: NodePath<BlockStatement>) {
+        const parent = path.parentPath?.node;
+
+        if (
+          parent &&
+          (parent.type === "FunctionDeclaration" ||
+            parent.type === "FunctionExpression" ||
+            parent.type === "ArrowFunctionExpression" ||
+            parent.type === "ClassMethod")
+        ) {
+          return;
+        }
+        addBlock("{block}", locStart(path.node), locEnd(path.node));
+      },
+
+      IfStatement(path: NodePath<IfStatement>) {
+        addBlock(
+          "if",
+          locStart(path.node.consequent),
+          locEnd(path.node.consequent),
+        );
+        if (path.node.alternate) {
+          addBlock(
+            "else",
+            locStart(path.node.alternate),
+            locEnd(path.node.alternate),
+          );
+        }
+      },
+
+      ForStatement(path: NodePath<ForStatement>) {
+        addBlock("for", locStart(path.node.body), locEnd(path.node.body));
+      },
+
+      WhileStatement(path: NodePath<WhileStatement>) {
+        addBlock("while", locStart(path.node.body), locEnd(path.node.body));
+      },
+
+      SwitchStatement(path: NodePath<SwitchStatement>) {
+        addBlock("switch", locStart(path.node), locEnd(path.node));
+      },
+
+      TryStatement(path: NodePath<TryStatement>) {
+        if (path.node.block)
+          addBlock("try", locStart(path.node.block), locEnd(path.node.block));
+        if (path.node.finalizer)
+          addBlock(
+            "finally",
+            locStart(path.node.finalizer),
+            locEnd(path.node.finalizer),
+          );
+      },
+
+      CatchClause(path: NodePath<CatchClause>) {
+        addBlock("catch", locStart(path.node.body), locEnd(path.node.body));
+      },
+
+      ObjectExpression(path: NodePath<ObjectExpression>) {
+        const start = locStart(path.node);
+        const end = locEnd(path.node);
+        if (!start || !end) return;
+        if (!spansEnough(start, end) || end - start < 4) return;
+        if (start === end) return;
+
+        const p = path.parentPath;
+        if (
+          p &&
+          (p.isCallExpression() ||
+            p.isMemberExpression() ||
+            p.isObjectProperty()) &&
+          end - start < 2
+        ) {
+          return;
+        }
+        addBlock("{object}", start, end);
+      },
+
+      TSModuleBlock(path: NodePath<TSModuleBlock>) {
+        const start = path.node.loc?.start.line;
+        const end = path.node.loc?.end.line;
+        if (start && end && end - start >= MIN_BLOCK_LINES) {
+          addBlock("declare", start, end);
+        }
+      },
+
+      JSXElement(path: NodePath<JSXElement>) {
+        const p = path.parentPath;
+        if (!p?.isReturnStatement() && !p?.isVariableDeclarator()) {
+          return;
+        }
+
+        const start = locStart(path.node);
+        const end = locEnd(path.node);
+        if (!spansEnough(start, end) || end - start < 4) return;
+
+        let name = "<JSX>";
+        if (path.node.openingElement.name.type === "JSXIdentifier") {
+          name = `<${path.node.openingElement.name.name}>`;
+        }
+        addBlock(name, start, end);
+      },
+
+      TSTypeLiteral(path: NodePath<TSTypeLiteral>) {
+        const start = path.node.loc?.start.line;
+        const end = path.node.loc?.end.line;
+        if (start && end && end - start >= MIN_BLOCK_LINES) {
+          addBlock("type", start, end);
+        }
+      },
+
+      ReturnStatement(path: NodePath<ReturnStatement>) {
+        const arg = path.node.argument;
+        if (arg && arg.loc) {
+          const start = arg.loc.start.line;
+          const end = arg.loc.end.line;
+          if (end - start >= MIN_BLOCK_LINES) {
+            addBlock("return", start - 1, end + 1);
+          }
+        }
+      },
+    };
+  }
+
+  function createApiSchemaVisitor(ctx: ExtractContext) {
+    return {
+      CallExpression(path: NodePath<CallExpression>) {
+        const node = path.node;
+        const callee = path.node.callee as any;
+        const args = path.node.arguments || [];
+
+        try {
+          if (
+            node.callee &&
+            node.callee.type === "MemberExpression" &&
+            node.callee.property &&
+            node.callee.property.type === "Identifier" &&
+            node.callee.property.name === "use"
+          ) {
+            const args = node.arguments || [];
+            const first = args[0];
+            const basePath = getStringFromNode(first);
+            for (let i = 1; i < args.length; i++) {
+              const a = args[i];
+              if (a && a.type === "Identifier" && basePath) {
+                routerMounts.set(a.name, basePath);
+              } else if (
+                a &&
+                a.type === "CallExpression" &&
+                a.callee &&
+                a.callee.type === "Identifier" &&
+                a.callee.name === "Router"
+              ) {
+              }
+            }
+          }
+
+          const callee = node.callee as any;
+          if (
+            callee &&
+            callee.type === "MemberExpression" &&
+            callee.object &&
+            callee.object.type === "Identifier" &&
+            callee.object.name === "mongoose" &&
+            callee.property &&
+            callee.property.type === "Identifier" &&
+            callee.property.name === "model"
+          ) {
+            const args = node.arguments || [];
+            const modelNameArg = args[0];
+            const schemaArg = args[1];
+            const modelName =
+              getStringFromNode(modelNameArg) || `model@${locStart(node)}`;
+
+            if (schemaArg && schemaArg.type === "NewExpression") {
+              const ctor = schemaArg.callee;
+              const isSchemaCtor =
+                (ctor.type === "Identifier" && ctor.name === "Schema") ||
+                (ctor.type === "MemberExpression" &&
+                  (ctor.object as any)?.name === "mongoose" &&
+                  (ctor.property as any)?.name === "Schema");
+              if (isSchemaCtor) {
+                const arg0 = schemaArg.arguments?.[0];
+                const arg1 = schemaArg.arguments?.[1];
+                if (arg0 && arg0.type === "ObjectExpression") {
+                  const fields = extractObjectFields(arg0 as ObjectExpression);
+                  if (schemaOptionsHaveTimestamps(arg1)) {
+                    if (!fields.some((f) => f.name === "createdAt"))
+                      fields.push({
+                        name: "createdAt",
+                        type: "Date",
+                        raw: "timestamps",
+                        auto: true,
+                      });
+                    if (!fields.some((f) => f.name === "updatedAt"))
+                      fields.push({
+                        name: "updatedAt",
+                        type: "Date",
+                        raw: "timestamps",
+                        auto: true,
+                      });
+                  }
+                  addSchema({
+                    name: modelName,
+                    framework: "mongoose",
+                    start: locStart(node),
+                    end: locEnd(node),
+                    fields,
+                  });
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.log(err);
+        }
+
+        const routeInfo = extractRouteFromCall(node);
+        if (routeInfo) {
+          let finalPath;
+          if (routeInfo.mountFor && routerMounts.has(routeInfo.mountFor)) {
+            finalPath = joinPaths(
+              routerMounts.get(routeInfo.mountFor)!,
+              routeInfo.path,
+            );
+          }
+
+          addApi({
+            method: routeInfo.method,
+            path: finalPath,
+            start: routeInfo.start,
+            end: routeInfo.end,
+            framework: routeInfo.framework,
+          });
+        }
+
+        if (
+          callee.type === "MemberExpression" &&
+          callee.property?.type === "Identifier"
+        ) {
+          const method = callee.property.name.toUpperCase();
+          if (HTTP_METHODS.has(method)) {
+            const firstArg = args?.[0];
+            if (firstArg && firstArg.type === "StringLiteral") {
+              addApi({
+                method,
+                path: firstArg.value,
+                start: locStart(node),
+                end: locEnd(node),
+                framework: "express",
+              });
+            }
+          }
+        }
+
+        if (
+          callee.type === "MemberExpression" &&
+          callee.object.type === "CallExpression" &&
+          callee.object.callee.type === "MemberExpression" &&
+          callee.object.callee.property.type === "Identifier" &&
+          callee.object.callee.property.name === "route" &&
+          callee.object.arguments.length >= 1 &&
+          callee.object.arguments[0].type === "StringLiteral" &&
+          callee.property.type === "Identifier"
+        ) {
+          const method = callee.property.name.toUpperCase();
+          if (HTTP_METHODS.has(method)) {
+            const pathArg = callee.object.arguments[0];
+            addApi({
+              method,
+              path: (pathArg as any).value,
+              start: locStart(node),
+              end: locEnd(node),
+              framework: "express",
+            });
+          }
+        }
+
+        let name;
+        if (callee.type === "MemberExpression") name = calleeName(callee);
+        if (!name) return;
+
+        for (const arg of args) {
+          if (
+            arg &&
+            (arg.type === "ArrowFunctionExpression" ||
+              arg.type === "FunctionExpression") &&
+            arg.body?.type === "BlockStatement"
+          ) {
+            const body = arg.body as BlockStatement;
+
+            let displayName = name;
+            if (name.includes(".")) displayName = name.split(".").pop()!;
+
+            if (/^app\./.test(name)) displayName = name;
+
+            addBlock(displayName, locStart(body), locEnd(body));
+          }
+        }
+      },
+
+      TSTypeAliasDeclaration(path: NodePath<TSTypeAliasDeclaration>) {
+        const node: any = path.node;
+        const name = node.id?.name;
+        const start = node.loc?.start.line || 0;
+        const end = node.loc?.end.line || null;
+        const fields: SchemaField[] = [];
+
+        const ta = node.typeAnnotation;
+        if (ta && (ta as any).type === "TSTypeLiteral") {
+          const members = (ta as any).members || [];
+          for (const mem of members) {
+            if ((mem as any).type === "TSPropertySignature") {
+              const key =
+                getPropName((mem as any).key) || (mem.key?.name ?? "unknown");
+              const optional = Boolean((mem as any).optional);
+              const tAnn: any =
+                (mem as any).typeAnnotation?.typeAnnotation ?? null;
+              const info = extractTSType(tAnn);
+              fields.push({
+                name: optional ? `${key}?` : key,
+                type: info.type ?? null,
+                children: info.children,
+                auto: false,
+              });
+            }
+          }
+          if (name) addSchema({ name, framework: "ts", start, end, fields });
+        }
+
+        addSymbol(path.node.id.name, {
+          type: "interface",
+          start: path.node.loc?.start.line,
+          end: path.node.loc?.end.line,
+        });
+      },
+
+      TSInterfaceDeclaration(path: NodePath<TSInterfaceDeclaration>) {
+        const node: any = path.node;
+        const name = node.id?.name;
+        const start = node.loc?.start.line || 0;
+        const end = node.loc?.end.line || null;
+        const fields: SchemaField[] = [];
+
+        if (node.body && Array.isArray(node.body.body)) {
+          for (const mem of node.body.body) {
+            if ((mem as any).type === "TSPropertySignature") {
+              const key =
+                getPropName((mem as any).key) || (mem.key?.name ?? "unknown");
+
+              const optional = Boolean((mem as any).optional);
+              const tAnn: any =
+                (mem as any).typeAnnotation?.typeAnnotation ?? null;
+              const info = extractTSType(tAnn);
+              fields.push({
+                name: optional ? `${key}?` : key,
+                type: info.type ?? null,
+                children: info.children,
+                auto: false,
+              });
+            }
+          }
+        }
+
+        if (name) addSchema({ name, framework: "ts", start, end, fields });
+
+        addSymbol(path.node.id.name, {
+          type: "interface",
+          start: path.node.loc?.start.line,
+          end: path.node.loc?.end.line,
+        });
+      },
+    };
+  }
+
+  function normalizeFilePath(path: string) {
+    return path.replace(/\\/g, "/");
+  }
+
+  function makeSymbolId(type: string, filePath: string, name: string) {
+    return `${type}:${normalizeFilePath(filePath)}:${name}`;
+  }
+
+  function makeApiId(method: string, path: string) {
+    return `api:${method.toUpperCase()}:${path}`;
+  }
+
+  function makeSchemaId(framework: string, name: string) {
+    return `schema:${framework}:${name}`;
+  }
 
   const makeKey = (name: string, start?: number, end?: number | null) =>
     `${name}:${start ?? 0}:${end ?? "?"}`;
@@ -129,62 +1148,79 @@ export function extractStructureBabel(filePath: string, code: string) {
 
   const addSymbol = (
     name: string | null | undefined,
-    opts: AddSymbolOptions = {}
+    opts: AddSymbolOptions = {},
   ) => {
     if (!name) return;
     const start = opts.start ?? 0;
     const end = opts.end ?? null;
     const key = makeKey(name, start, end);
 
-    if (opts.type === "function" && !seenFunctions.has(key)) {
-      functions.push({ name, start, end });
-      seenFunctions.add(key);
+    if (opts.type === "function" && !ctx.seen.functions.has(key)) {
+      ctx.functions.push({
+        id: makeSymbolId("function", ctx.filePath, name),
+        name,
+        start,
+        end,
+      });
+      ctx.seen.functions.add(key);
     }
 
-    if (opts.type === "class" && !seenClasses.has(key)) {
-      classes.push({ name, start, end });
-      seenClasses.add(key);
+    if (opts.type === "class" && !ctx.seen.classes.has(key)) {
+      ctx.classes.push({
+        id: makeSymbolId("class", ctx.filePath, name),
+        name,
+        start,
+        end,
+      });
+      ctx.seen.classes.add(key);
     }
 
-    if (opts.type === "interface" && !seenInterfaces.has(key)) {
-      interfaces.push({ name, start, end });
-      seenInterfaces.add(key);
+    if (opts.type === "interface" && !ctx.seen.interfaces.has(key)) {
+      ctx.interfaces.push({
+        id: makeSymbolId("interface", ctx.filePath, name),
+        name,
+        start,
+        end,
+      });
+      ctx.seen.interfaces.add(key);
     }
 
-    if (
-      /^[A-Z]/.test(name) &&
-      (opts.type === "function" || opts.type === "class") &&
-      code.includes("return <") &&
-      !seenComponents.has(key)
-    ) {
-      components.push({ name, start, end });
-      seenComponents.add(key);
-    }
-
-    if (opts.addToExports && !seenExports.has(key)) {
-      exports.push({ name, start, end });
-      seenExports.add(key);
+    if (opts.addToExports && !ctx.seen.exports.has(key)) {
+      ctx.exports.push({
+        id: makeSymbolId("exports", ctx.filePath, name),
+        name,
+        start,
+        end,
+      });
+      ctx.seen.exports.add(key);
     }
   };
 
   const addImportIfNew = (val: string, start: number, end: number | null) => {
-    if (!seenImports.has(val)) {
-      seenImports.add(val);
-      imports.push({ name: val, start, end });
+    if (!ctx.seen.imports.has(val)) {
+      ctx.seen.imports.add(val);
+      ctx.imports.push({ name: val, start, end });
     }
   };
+
+  function normalizePath(raw: string | null | undefined) {
+    if (!raw) return "/";
+    return (
+      raw.replace(/^['"]/, "").replace(/['"]$/, "").replace(/\/+/g, "/") || "/"
+    );
+  }
 
   const addBlock = (
     name: string,
     start?: number | null,
-    end?: number | null
+    end?: number | null,
   ) => {
     if (!name) return;
     if (!spansEnough(start, end)) return;
     const key = makeKey(name, start!, end!);
-    if (seenBlocks.has(key)) return;
-    seenBlocks.add(key);
-    blocks.push({ name, start: start!, end: end! });
+    if (ctx.seen.blocks.has(key)) return;
+    ctx.seen.blocks.add(key);
+    ctx.blocks.push({ name, start: start!, end: end! });
   };
 
   function addApi(
@@ -195,7 +1231,7 @@ export function extractStructureBabel(filePath: string, code: string) {
       end?: number | null;
       framework?: ApiFramework;
     },
-    alsoAddFoldBlock: boolean = true
+    alsoAddFoldBlock: boolean = true,
   ) {
     const method = (info.method ?? "").toUpperCase();
     const path = info.path ?? "/";
@@ -206,10 +1242,17 @@ export function extractStructureBabel(filePath: string, code: string) {
     if (!HTTP_METHODS.has(method)) return;
 
     const key = `${framework}|${method}|${path}|${start}|${end ?? "?"}`;
-    if (seenApis.has(key)) return;
-    seenApis.add(key);
+    if (ctx.seen.apis.has(key)) return;
+    ctx.seen.apis.add(key);
 
-    apis.push({ method, path, start, end, framework });
+    ctx.apis.push({
+      id: makeApiId(method, path),
+      method,
+      path,
+      start,
+      end,
+      framework,
+    });
 
     if (alsoAddFoldBlock && end !== null && end - start >= MIN_BLOCK_LINES) {
       addBlock(`${method} ${path}`, start, end);
@@ -224,9 +1267,10 @@ export function extractStructureBabel(filePath: string, code: string) {
     fields?: SchemaField[];
   }) {
     const key = makeKey(s.name, s.start, s.end);
-    if (seenSchemas.has(key)) return;
-    seenSchemas.add(key);
-    schemas.push({
+    if (ctx.seen.schemas.has(key)) return;
+    ctx.seen.schemas.add(key);
+    ctx.schemas.push({
+      id: makeSchemaId(s.framework, s.name),
       name: s.name,
       framework: s.framework,
       start: s.start,
@@ -265,9 +1309,40 @@ export function extractStructureBabel(filePath: string, code: string) {
     return null;
   }
 
+  function returnsJSXFromPath(path: NodePath<any>): boolean {
+    let found = false;
+
+    path.traverse({
+      ReturnStatement(p) {
+        const arg = p.node.argument;
+        if (!arg) return;
+
+        if (arg.type === "JSXElement" || arg.type === "JSXFragment") {
+          found = true;
+          p.stop();
+          return;
+        }
+
+        if (
+          arg.type === "CallExpression" &&
+          arg.callee.type === "MemberExpression" &&
+          arg.callee.object.type === "Identifier" &&
+          arg.callee.object.name === "React" &&
+          arg.callee.property.type === "Identifier" &&
+          arg.callee.property.name === "createElement"
+        ) {
+          found = true;
+          p.stop();
+        }
+      },
+    });
+
+    return found;
+  }
+
   function joinPaths(
     base: string | null | undefined,
-    part: string | null | undefined
+    part: string | null | undefined,
   ) {
     const b = (base || "/").toString();
     const p = (part || "/").toString();
@@ -277,13 +1352,6 @@ export function extractStructureBabel(filePath: string, code: string) {
 
     const out = `${baseNorm}${partNorm}`.replace(/\/+/g, "/");
     return out === "" ? "/" : out;
-  }
-
-  function normalizePath(raw: string | null | undefined) {
-    if (!raw) return "/";
-    return (
-      raw.replace(/^['"]/, "").replace(/['"]$/, "").replace(/\/+/g, "/") || "/"
-    );
   }
 
   function detectFrameworkFromCallee(callee: any): ApiFramework {
@@ -385,7 +1453,7 @@ export function extractStructureBabel(filePath: string, code: string) {
       const routePath = getStringFromNode(routeArg) ?? "<dynamic>";
 
       const routeRootName = getRootIdentifierName(
-        routeCall.callee?.object ?? routeCall.callee
+        routeCall.callee?.object ?? routeCall.callee,
       );
 
       return {
@@ -402,7 +1470,7 @@ export function extractStructureBabel(filePath: string, code: string) {
       const firstArg = node.arguments && node.arguments[0];
       const pathStr = getStringFromNode(firstArg) ?? "<dynamic>";
       const rootName = getRootIdentifierName(
-        callee.object.callee?.object ?? callee.object.callee
+        callee.object.callee?.object ?? callee.object.callee,
       );
       return {
         method,
@@ -623,7 +1691,7 @@ export function extractStructureBabel(filePath: string, code: string) {
           return simplifyTypeName((call.callee as Identifier).name + "()");
         if (call.callee.type === "MemberExpression")
           return simplifyTypeName(
-            memberToString(call.callee as MemberExpression) + "()"
+            memberToString(call.callee as MemberExpression) + "()",
           );
         return "call";
       }
@@ -660,7 +1728,7 @@ export function extractStructureBabel(filePath: string, code: string) {
         const typeProp = objExpr.properties.find(
           (pr) =>
             pr.type === "ObjectProperty" &&
-            getPropName((pr as ObjectProperty).key) === "type"
+            getPropName((pr as ObjectProperty).key) === "type",
         ) as ObjectProperty | undefined;
         return typeProp ?? null;
       };
@@ -734,7 +1802,7 @@ export function extractStructureBabel(filePath: string, code: string) {
                 if (arg0.type === "ObjectExpression") {
                   field.type = "array<object>";
                   field.children = extractObjectFields(
-                    arg0 as ObjectExpression
+                    arg0 as ObjectExpression,
                   );
                   field.raw = objToText(arg0 as ObjectExpression) || undefined;
                 } else if (arg0.type === "CallExpression") {
@@ -749,7 +1817,7 @@ export function extractStructureBabel(filePath: string, code: string) {
                     if (innerArg && innerArg.type === "ObjectExpression") {
                       field.type = "array<object>";
                       field.children = extractObjectFields(
-                        innerArg as ObjectExpression
+                        innerArg as ObjectExpression,
                       );
                       field.raw =
                         objToText(innerArg as ObjectExpression) || undefined;
@@ -861,14 +1929,14 @@ export function extractStructureBabel(filePath: string, code: string) {
       m.object.type === "Identifier"
         ? (m.object as Identifier).name
         : m.object.type === "MemberExpression"
-        ? memberToString(m.object as MemberExpression)
-        : "";
+          ? memberToString(m.object as MemberExpression)
+          : "";
     const prop =
       m.property.type === "Identifier"
         ? (m.property as Identifier).name
         : m.property.type === "StringLiteral"
-        ? (m.property as StringLiteral).value
-        : "";
+          ? (m.property as StringLiteral).value
+          : "";
     return object && prop ? `${object}.${prop}` : prop || object || "";
   };
 
@@ -911,7 +1979,7 @@ export function extractStructureBabel(filePath: string, code: string) {
 
       case "TSUnionType": {
         const parts = (node.types || []).map(
-          (t: any) => extractTSType(t).type || "any"
+          (t: any) => extractTSType(t).type || "any",
         );
         return { type: parts.join("|") };
       }
@@ -982,869 +2050,63 @@ export function extractStructureBabel(filePath: string, code: string) {
 
   const addFnBodyAsBlock = (
     name: string,
-    fn: ArrowFunctionExpression | FunctionExpression
+    fn: ArrowFunctionExpression | FunctionExpression,
   ) => {
     if (fn.body && fn.body.type === "BlockStatement") {
       addBlock(name, locStart(fn.body), locEnd(fn.body));
     }
   };
 
-  traverse(ast, {
-    enter(path) {
-      const node = path.node;
+  const hasApi =
+    code.includes(".get(") ||
+    code.includes(".post(") ||
+    code.includes(".put(") ||
+    code.includes(".delete(") ||
+    code.includes("route(");
 
-      if (isImportDeclaration(node) && isStringLiteral(node.source)) {
-        addImportIfNew(node.source.value, locStart(node), locEnd(node));
-      }
+  const hasSchema =
+    code.includes("Schema(") ||
+    code.includes(".object(") ||
+    code.includes("interface ") ||
+    code.includes("type ");
 
-      if (
-        isCallExpression(node) &&
-        node.callee.type === "Identifier" &&
-        node.callee.name === "require" &&
-        node.arguments.length === 1 &&
-        isStringLiteral(node.arguments[0])
-      ) {
-        addImportIfNew(
-          (node.arguments[0] as StringLiteral).value,
-          locStart(node),
-          locEnd(node)
-        );
-      }
+  const hasJSX = code.includes("<") && code.includes(">");
 
-      if (isImportExpression(node) && isStringLiteral((node as any).source)) {
-        addImportIfNew(
-          (node as any).source.value,
-          locStart(node),
-          locEnd(node)
-        );
-      }
-    },
+  const hasBlocks = code.includes("{") && code.includes("}");
 
-    ArrowFunctionExpression(path) {
-      const start = path.node.loc?.start.line;
-      const end = path.node.loc?.end.line;
-      if (start && end && end - start >= MIN_BLOCK_LINES) {
-        addBlock("arrow-fn", start, end);
-      }
-    },
-
-    FunctionDeclaration(path: NodePath<FunctionDeclaration>) {
-      addSymbol(path.node.id?.name, {
-        type: "function",
-        start: path.node.loc?.start.line,
-        end: path.node.loc?.end.line,
+  if (!hasApi && !hasSchema && !hasJSX && !hasBlocks) {
+    traverse(ast, {
+      ...createImportVisitor(ctx),
+      ...createSymbolVisitor(ctx),
+    });
+  } else {
+    try {
+      traverse(ast, {
+        ...createImportVisitor(ctx),
+        ...createSymbolVisitor(ctx),
+        ...createBlockVisitor(ctx),
+        ...createApiSchemaVisitor(ctx),
       });
-      if (path.node.id?.name && path.node.body) {
-        addBlock(
-          path.node.id.name,
-          locStart(path.node.body),
-          locEnd(path.node.body)
-        );
-      }
-    },
-
-    VariableDeclarator(path: NodePath<VariableDeclarator>) {
-      const { id, init } = path.node;
-
-      if (init?.type === "NewExpression" || init?.type === "CallExpression") {
-        const callee = init.callee;
-        const isSchemaCtor =
-          (callee.type === "Identifier" && callee.name === "Schema") ||
-          (callee.type === "MemberExpression" &&
-            (callee.object as any)?.name === "mongoose" &&
-            (callee.property as any)?.name === "Schema");
-
-        if (isSchemaCtor && init.arguments && init.arguments.length > 0) {
-          const arg0 = init.arguments[0];
-          const arg1 = init.arguments[1];
-          if (arg0 && arg0.type === "ObjectExpression") {
-            const start = path.node.loc?.start.line || 0;
-            const end = path.node.loc?.end.line || null;
-            const name =
-              (id.type === "Identifier" && id.name) || "AnonymousSchema";
-            const fields = extractObjectFields(arg0 as ObjectExpression);
-
-            if (schemaOptionsHaveTimestamps(arg1)) {
-              if (!fields.some((f) => f.name === "createdAt"))
-                fields.push({
-                  name: "createdAt",
-                  type: "Date",
-                  raw: "timestamps",
-                  auto: true,
-                });
-              if (!fields.some((f) => f.name === "updatedAt"))
-                fields.push({
-                  name: "updatedAt",
-                  type: "Date",
-                  raw: "timestamps",
-                  auto: true,
-                });
-            }
-
-            addSchema({ name, framework: "mongoose", start, end, fields });
-          }
-        }
-      }
-
-      if (
-        init &&
-        init.type === "CallExpression" &&
-        init.callee.type === "MemberExpression" &&
-        init.callee.property.type === "Identifier" &&
-        init.callee.property.name === "object"
-      ) {
-        const framework =
-          (init.callee.object as Identifier).name === "z" ? "zod" : "yup";
-        const arg0 = init.arguments?.[0];
-        if (arg0 && arg0.type === "ObjectExpression") {
-          const start = locStart(init);
-          const end = locEnd(init);
-          const schemaName =
-            id.type === "Identifier" ? id.name : `${framework}.object@${start}`;
-          const fields = extractObjectFields(arg0 as ObjectExpression);
-          addSchema({ name: schemaName, framework, start, end, fields });
-        }
-      }
-
-      if (init?.type === "ObjectExpression") {
-        const start = path.node.loc?.start.line || 0;
-        const end = path.node.loc?.end.line || null;
-        const name = id.type === "Identifier" ? id.name : "objSchema";
-        if (/schema/i.test(String(name))) {
-          const fields = extractObjectFields(init as ObjectExpression);
-          addSchema({ name, framework: "mongoose", start, end, fields });
-        }
-      }
-
-      if (
-        id.type === "Identifier" &&
-        init &&
-        ["ArrowFunctionExpression", "FunctionExpression"].includes(init.type)
-      ) {
-        addSymbol(id.name, {
-          type: "function",
-          start: path.node.loc?.start.line,
-          end: path.node.loc?.end.line,
-        });
-        addFnBodyAsBlock(
-          id.name,
-          init as ArrowFunctionExpression | FunctionExpression
-        );
-      }
-    },
-
-    ClassDeclaration(path) {
-      addSymbol(path.node.id?.name, {
-        type: "class",
-        start: path.node.loc?.start.line,
-        end: path.node.loc?.end.line,
+    } catch (err) {
+      ctx.errors.push({
+        message: `Traversal failed : ${(err as any)?.message ?? err}`,
       });
-
-      const node: any = path.node;
-      const className = node.id?.name || "AnonymousController";
-
-      let basePath = "/";
-      if (Array.isArray(node.decorators)) {
-        const controllerDec = node.decorators.find((dec: any) => {
-          const expr = dec.expression;
-          return (
-            expr &&
-            expr.type === "CallExpression" &&
-            expr.callee.type === "Identifier" &&
-            expr.callee.name === "Controller"
-          );
-        });
-
-        if (controllerDec?.expression?.type === "CallExpression") {
-          basePath =
-            getStringFromNode(controllerDec.expression.arguments?.[0]) || "/";
-        }
-      }
-
-      const elems = node.body?.body || [];
-      for (const elem of elems) {
-        if (!elem.decorators || elem.decorators.length === 0) continue;
-
-        for (const mDec of elem.decorators) {
-          const expr = mDec.expression;
-          if (!expr) continue;
-
-          let decName: string | null = null;
-          let argNode: any = null;
-
-          if (expr.type === "CallExpression") {
-            if (expr.callee.type === "Identifier") decName = expr.callee.name;
-            else if (expr.callee.type === "MemberExpression")
-              decName = expr.callee.property?.name ?? null;
-            argNode = expr.arguments?.[0];
-          } else if (expr.type === "Identifier") {
-            decName = expr.name;
-          } else if (expr.type === "MemberExpression") {
-            decName = expr.property?.name ?? null;
-          }
-
-          if (!decName) continue;
-          const methodName = decName.toUpperCase();
-
-          if (!HTTP_METHODS.has(methodName)) continue;
-
-          const methodPathRaw = argNode
-            ? getStringFromNode(argNode) || "/"
-            : null;
-
-          const methodPath = methodPathRaw || "/";
-          const fullPath = joinPaths(basePath, methodPath);
-
-          apis.push({
-            method: methodName,
-            path: fullPath,
-            start: elem.loc?.start?.line ?? 0,
-            end: elem.loc?.end?.line ?? null,
-            framework: "nest",
-            controller: className,
-          });
-        }
-      }
-    },
-
-    TSTypeLiteral(path) {
-      const start = path.node.loc?.start.line;
-      const end = path.node.loc?.end.line;
-      if (start && end && end - start >= MIN_BLOCK_LINES) {
-        addBlock("type", start, end);
-      }
-    },
-
-    TSModuleBlock(path) {
-      const start = path.node.loc?.start.line;
-      const end = path.node.loc?.end.line;
-      if (start && end && end - start >= MIN_BLOCK_LINES) {
-        addBlock("declare", start, end);
-      }
-    },
-
-    TSInterfaceDeclaration(path: NodePath<TSInterfaceDeclaration>) {
-      const node: any = path.node;
-      const name = node.id?.name;
-      const start = node.loc?.start.line || 0;
-      const end = node.loc?.end.line || null;
-      const fields: SchemaField[] = [];
-
-      if (node.body && Array.isArray(node.body.body)) {
-        for (const mem of node.body.body) {
-          if ((mem as any).type === "TSPropertySignature") {
-            const key =
-              getPropName((mem as any).key) || (mem.key?.name ?? "unknown");
-
-            const optional = Boolean((mem as any).optional);
-            const tAnn: any =
-              (mem as any).typeAnnotation?.typeAnnotation ?? null;
-            const info = extractTSType(tAnn);
-            fields.push({
-              name: optional ? `${key}?` : key,
-              type: info.type ?? null,
-              children: info.children,
-              auto: false,
-            });
-          }
-        }
-      }
-
-      if (name) addSchema({ name, framework: "ts", start, end, fields });
-
-      addSymbol(path.node.id.name, {
-        type: "interface",
-        start: path.node.loc?.start.line,
-        end: path.node.loc?.end.line,
-      });
-    },
-
-    TSTypeAliasDeclaration(path: NodePath<TSTypeAliasDeclaration>) {
-      const node: any = path.node;
-      const name = node.id?.name;
-      const start = node.loc?.start.line || 0;
-      const end = node.loc?.end.line || null;
-      const fields: SchemaField[] = [];
-
-      const ta = node.typeAnnotation;
-      if (ta && (ta as any).type === "TSTypeLiteral") {
-        const members = (ta as any).members || [];
-        for (const mem of members) {
-          if ((mem as any).type === "TSPropertySignature") {
-            const key =
-              getPropName((mem as any).key) || (mem.key?.name ?? "unknown");
-            const optional = Boolean((mem as any).optional);
-            const tAnn: any =
-              (mem as any).typeAnnotation?.typeAnnotation ?? null;
-            const info = extractTSType(tAnn);
-            fields.push({
-              name: optional ? `${key}?` : key,
-              type: info.type ?? null,
-              children: info.children,
-              auto: false,
-            });
-          }
-        }
-        if (name) addSchema({ name, framework: "ts", start, end, fields });
-      }
-
-      addSymbol(path.node.id.name, {
-        type: "interface",
-        start: path.node.loc?.start.line,
-        end: path.node.loc?.end.line,
-      });
-    },
-
-    ExportNamedDeclaration(path: NodePath<ExportNamedDeclaration>) {
-      const decl = path.node.declaration as any;
-
-      if (decl) {
-        if (decl.type === "FunctionDeclaration" && decl.id?.name) {
-          const method = decl.id.name.toUpperCase();
-          if (HTTP_METHODS.has(method)) {
-            const start = locStart(decl);
-            const end = locEnd(decl);
-            addApi({ method, path: "/", start, end, framework: "next" });
-            addBlock(`${method} /`, start, end);
-          }
-
-          addSymbol(decl.id.name, {
-            type: "function",
-            addToExports: true,
-            start: decl.loc?.start.line,
-            end: decl.loc?.end.line,
-          });
-          if (decl.body)
-            addBlock(decl.id.name, locStart(decl.body), locEnd(decl.body));
-        } else if (decl.type === "ClassDeclaration" && decl.id?.name) {
-          addSymbol(decl.id.name, {
-            type: "class",
-            addToExports: true,
-            start: decl.loc?.start.line,
-            end: decl.loc?.end.line,
-          });
-        } else if (
-          decl.type === "TSInterfaceDeclaration" ||
-          decl.type === "TSTypeAliasDeclaration"
-        ) {
-          addSymbol(decl.id.name, {
-            type: "interface",
-            addToExports: true,
-            start: decl.loc?.start.line,
-            end: decl.loc?.end.line,
-          });
-        } else if (decl.type === "VariableDeclaration") {
-          decl.declarations.forEach((d: any) => {
-            const name = d.id?.name;
-            if (!name) return;
-            addSymbol(name, {
-              addToExports: true,
-              start: d.loc?.start.line,
-              end: d.loc?.end.line,
-            });
-
-            const init = d.init;
-            if (
-              init?.type === "ArrowFunctionExpression" ||
-              init?.type === "FunctionExpression"
-            ) {
-              addSymbol(name, {
-                type: "function",
-                start: d.loc?.start.line,
-                end: d.loc?.end.line,
-              });
-              addFnBodyAsBlock(name, init);
-            } else if (init?.type === "ClassExpression") {
-              addSymbol(name, {
-                type: "class",
-                start: d.loc?.start.line,
-                end: d.loc?.end.line,
-              });
-            }
-
-            if (
-              d.id?.type === "Identifier" &&
-              HTTP_METHODS.has(d.id?.name.toUpperCase()) &&
-              init &&
-              (init.type === "ArrowFunctionExpression" ||
-                init.type === "FunctionExpression")
-            ) {
-              addApi({
-                method: d.id?.name.toUpperCase(),
-                path: "/",
-                start: locStart(d),
-                end: locEnd(d),
-                framework: "next",
-              });
-            }
-          });
-        }
-      }
-
-      for (const spec of path.node.specifiers) {
-        if (
-          spec.type === "ExportSpecifier" &&
-          spec.exported.type === "Identifier"
-        ) {
-          addSymbol(spec.exported.name, {
-            addToExports: true,
-            start: spec.loc?.start.line,
-            end: spec.loc?.end.line,
-          });
-        }
-      }
-    },
-
-    ExportDefaultDeclaration(path: NodePath<ExportDefaultDeclaration>) {
-      const decl: any = path.node.declaration;
-      const start = decl?.loc?.start.line ?? path.node.loc?.start.line;
-      const end = decl?.loc?.end.line ?? path.node.loc?.end.line;
-
-      if (filePath.includes("/app/api/") || filePath.includes("/pages/api/")) {
-        if (
-          decl &&
-          (decl.type === "FunctionDeclaration" ||
-            decl.type === "FunctionExpression" ||
-            decl.type === "ArrowFunctionExpression")
-        ) {
-          const methods = Array.from(
-            collectReqMethods(decl.body || decl, new Set())
-          );
-          if (methods.length > 0) {
-            methods.forEach((m) => {
-              addApi({
-                method: m,
-                path: "/",
-                start,
-                end,
-                framework: "next",
-              });
-            });
-          } else {
-            addApi({ method: "ALL", path: "/", start, end, framework: "next" });
-          }
-        }
-      }
-
-      if (decl?.id?.name) {
-        addSymbol(decl.id.name, {
-          addToExports: true,
-          type:
-            decl.type === "FunctionDeclaration"
-              ? "function"
-              : decl.type === "ClassDeclaration"
-              ? "class"
-              : undefined,
-          start,
-          end,
-        });
-        if (decl.type === "FunctionDeclaration" && decl.body) {
-          addBlock(decl.id.name, locStart(decl.body), locEnd(decl.body));
-        }
-      } else if (decl?.name) {
-        addSymbol(decl.name, { addToExports: true, start, end });
-      }
-    },
-
-    AssignmentExpression(path: NodePath<AssignmentExpression>) {
-      const left = path.node.left as any;
-      const right = path.node.right as any;
-      const start = path.node.loc?.start.line;
-      const end = path.node.loc?.end.line;
-
-      if (
-        left.type === "MemberExpression" &&
-        left.object.type === "Identifier" &&
-        ["exports", "module"].includes(left.object.name)
-      ) {
-        let key = "";
-        if (left.property.type === "Identifier") key = left.property.name;
-        else if (left.property.type === "StringLiteral")
-          key = left.property.value;
-
-        const isObjectExport =
-          left.object.name === "module" &&
-          left.property.type === "Identifier" &&
-          left.property.name === "exports" &&
-          right.type === "ObjectExpression";
-
-        if (isObjectExport) {
-          for (const prop of right.properties as any[]) {
-            const pKey = prop.key?.name || prop.key?.value;
-            if (!pKey) continue;
-            addSymbol(pKey, {
-              addToExports: true,
-              start: prop.loc?.start.line,
-              end: prop.loc?.end.line,
-            });
-
-            const val = prop.value;
-            if (
-              val.type === "FunctionExpression" ||
-              val.type === "ArrowFunctionExpression"
-            ) {
-              addSymbol(pKey, {
-                type: "function",
-                start: val.loc?.start.line,
-                end: val.loc?.end.line,
-              });
-              addFnBodyAsBlock(pKey, val);
-            } else if (val.type === "ClassExpression") {
-              addSymbol(pKey, {
-                type: "class",
-                start: val.loc?.start.line,
-                end: val.loc?.end.line,
-              });
-            }
-          }
-        } else if (key) {
-          addSymbol(key, { addToExports: true, start, end });
-
-          if (
-            right.type === "FunctionExpression" ||
-            right.type === "ArrowFunctionExpression"
-          ) {
-            addSymbol(key, { type: "function", start, end });
-            addFnBodyAsBlock(key, right);
-          } else if (right.type === "ClassExpression") {
-            addSymbol(key, { type: "class", start, end });
-          }
-        }
-      }
-    },
-
-    BlockStatement(path: NodePath<BlockStatement>) {
-      const parent = path.parentPath?.node;
-      if (
-        parent &&
-        (parent.type === "FunctionDeclaration" ||
-          parent.type === "FunctionExpression" ||
-          parent.type === "ArrowFunctionExpression")
-      ) {
-        return;
-      }
-      addBlock("{block}", locStart(path.node), locEnd(path.node));
-    },
-
-    IfStatement(path: NodePath<IfStatement>) {
-      addBlock(
-        "if",
-        locStart(path.node.consequent),
-        locEnd(path.node.consequent)
-      );
-      if (path.node.alternate) {
-        addBlock(
-          "else",
-          locStart(path.node.alternate),
-          locEnd(path.node.alternate)
-        );
-      }
-    },
-
-    ForStatement(path: NodePath<ForStatement>) {
-      addBlock("for", locStart(path.node.body), locEnd(path.node.body));
-    },
-
-    WhileStatement(path: NodePath<WhileStatement>) {
-      addBlock("while", locStart(path.node.body), locEnd(path.node.body));
-    },
-
-    SwitchStatement(path: NodePath<SwitchStatement>) {
-      addBlock("switch", locStart(path.node), locEnd(path.node));
-    },
-
-    TryStatement(path: NodePath<TryStatement>) {
-      if (path.node.block)
-        addBlock("try", locStart(path.node.block), locEnd(path.node.block));
-      if (path.node.finalizer)
-        addBlock(
-          "finally",
-          locStart(path.node.finalizer),
-          locEnd(path.node.finalizer)
-        );
-    },
-
-    CatchClause(path: NodePath<CatchClause>) {
-      addBlock("catch", locStart(path.node.body), locEnd(path.node.body));
-    },
-
-    ObjectExpression(path: NodePath<ObjectExpression>) {
-      const start = locStart(path.node);
-      const end = locEnd(path.node);
-      if (!start || !end) return;
-      if (!spansEnough(start, end)) return;
-      if (start === end) return;
-
-      const p = path.parentPath;
-      if (
-        p &&
-        (p.isCallExpression() ||
-          p.isMemberExpression() ||
-          p.isObjectProperty()) &&
-        end - start < 2
-      ) {
-        return;
-      }
-      addBlock("{object}", start, end);
-    },
-
-    ReturnStatement(path) {
-      const arg = path.node.argument;
-      if (arg && arg.loc) {
-        const start = arg.loc.start.line;
-        const end = arg.loc.end.line;
-        if (end - start >= MIN_BLOCK_LINES) {
-          addBlock("return", start - 1, end + 1);
-        }
-      }
-    },
-
-    JSXElement(path: NodePath<JSXElement>) {
-      const start = locStart(path.node);
-      const end = locEnd(path.node);
-      if (!spansEnough(start, end)) return;
-
-      let name = "<JSX>";
-      if (path.node.openingElement.name.type === "JSXIdentifier") {
-        name = `<${path.node.openingElement.name.name}>`;
-      }
-      addBlock(name, start, end);
-    },
-
-    CallExpression(path) {
-      const node = path.node;
-      const callee = path.node.callee as any;
-      const args = path.node.arguments || [];
-
-      try {
-        if (
-          node.callee &&
-          node.callee.type === "MemberExpression" &&
-          node.callee.property &&
-          node.callee.property.type === "Identifier" &&
-          node.callee.property.name === "use"
-        ) {
-          const obj = node.callee.object;
-          const args = node.arguments || [];
-          const first = args[0];
-          const basePath = getStringFromNode(first);
-          for (let i = 1; i < args.length; i++) {
-            const a = args[i];
-            if (a && a.type === "Identifier" && basePath) {
-              routerMounts.set(a.name, basePath);
-            } else if (
-              a &&
-              a.type === "CallExpression" &&
-              a.callee &&
-              a.callee.type === "Identifier" &&
-              a.callee.name === "Router"
-            ) {
-            }
-          }
-        }
-
-        const callee = node.callee as any;
-        if (
-          callee &&
-          callee.type === "MemberExpression" &&
-          callee.object &&
-          callee.object.type === "Identifier" &&
-          callee.object.name === "mongoose" &&
-          callee.property &&
-          callee.property.type === "Identifier" &&
-          callee.property.name === "model"
-        ) {
-          const args = node.arguments || [];
-          const modelNameArg = args[0];
-          const schemaArg = args[1];
-          const modelName =
-            getStringFromNode(modelNameArg) || `model@${locStart(node)}`;
-
-          if (schemaArg && schemaArg.type === "NewExpression") {
-            const ctor = schemaArg.callee;
-            const isSchemaCtor =
-              (ctor.type === "Identifier" && ctor.name === "Schema") ||
-              (ctor.type === "MemberExpression" &&
-                (ctor.object as any)?.name === "mongoose" &&
-                (ctor.property as any)?.name === "Schema");
-            if (isSchemaCtor) {
-              const arg0 = schemaArg.arguments?.[0];
-              const arg1 = schemaArg.arguments?.[1];
-              if (arg0 && arg0.type === "ObjectExpression") {
-                const fields = extractObjectFields(arg0 as ObjectExpression);
-                if (schemaOptionsHaveTimestamps(arg1)) {
-                  if (!fields.some((f) => f.name === "createdAt"))
-                    fields.push({
-                      name: "createdAt",
-                      type: "Date",
-                      raw: "timestamps",
-                      auto: true,
-                    });
-                  if (!fields.some((f) => f.name === "updatedAt"))
-                    fields.push({
-                      name: "updatedAt",
-                      type: "Date",
-                      raw: "timestamps",
-                      auto: true,
-                    });
-                }
-                addSchema({
-                  name: modelName,
-                  framework: "mongoose",
-                  start: locStart(node),
-                  end: locEnd(node),
-                  fields,
-                });
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.log(err);
-      }
-
-      if (callee.property?.name === "use") {
-        const args = node.arguments || [];
-        if (args.length === 2) {
-          const mountArg = args[0];
-          const second = args[1];
-          const mountPath = getStringFromNode(mountArg) ?? "/";
-          if (second.type === "Identifier") {
-            const childName = second.name;
-            const parentName =
-              callee.object?.type === "Identifier" ? callee.object.name : null;
-            if (parentName && routerMounts.has(parentName)) {
-              routerMounts.set(
-                childName,
-                joinPaths(routerMounts.get(parentName)!, mountPath)
-              );
-            } else {
-              routerMounts.set(childName, mountPath);
-            }
-          }
-        }
-      }
-
-      const routeInfo = extractRouteFromCall(node);
-      if (routeInfo) {
-        let finalPath = routeInfo.path;
-        if (routeInfo.mountFor && routerMounts.has(routeInfo.mountFor)) {
-          finalPath = joinPaths(
-            routerMounts.get(routeInfo.mountFor)!,
-            finalPath
-          );
-        }
-
-        addApi({
-          method: routeInfo.method,
-          path: finalPath,
-          start: routeInfo.start,
-          end: routeInfo.end,
-          framework: routeInfo.framework,
-        });
-      }
-
-      if (
-        path.node.callee &&
-        path.node.callee.type === "MemberExpression" &&
-        path.node.callee.property &&
-        path.node.callee.property.type === "Identifier" &&
-        path.node.callee.property.name === "use"
-      ) {
-        const args = path.node.arguments || [];
-        if (args.length >= 2) {
-          const baseNode = args[0];
-          const routerNode = args[1];
-          const basePath = getStringFromNode(baseNode);
-          if (basePath) {
-            if (routerNode.type === "Identifier") {
-              routerMounts.set(routerNode.name, basePath);
-            }
-          }
-        }
-      }
-
-      if (
-        callee === "MemberExpression" &&
-        callee.property.type === "Identifier"
-      ) {
-        const method = callee.property.name.toUpperCase();
-        if (HTTP_METHODS.has(method)) {
-          const firstArg = args?.[0];
-          if (firstArg && firstArg.type === "StringLiteral") {
-            addApi({
-              method,
-              path: firstArg.value,
-              start: locStart(node),
-              end: locEnd(node),
-              framework: "express",
-            });
-          }
-        }
-      }
-
-      if (
-        callee.type === "MemberExpression" &&
-        callee.object.type === "CallExpression" &&
-        callee.object.callee.type === "MemberExpression" &&
-        callee.object.callee.property.type === "Identifier" &&
-        callee.object.callee.property.name === "route" &&
-        callee.object.arguments.length >= 1 &&
-        callee.object.arguments[0].type === "StringLiteral" &&
-        callee.property.type === "Identifier"
-      ) {
-        const method = callee.property.name.toUpperCase();
-        if (HTTP_METHODS.has(method)) {
-          const pathArg = callee.object.arguments[0];
-          addApi({
-            method,
-            path: (pathArg as any).value,
-            start: locStart(node),
-            end: locEnd(node),
-            framework: "express",
-          });
-        }
-      }
-
-      let name;
-      if (callee.type === "MemberExpression") name = calleeName(callee);
-      if (!name) return;
-
-      for (const arg of args) {
-        if (
-          arg &&
-          (arg.type === "ArrowFunctionExpression" ||
-            arg.type === "FunctionExpression") &&
-          arg.body?.type === "BlockStatement"
-        ) {
-          const body = arg.body as BlockStatement;
-
-          let displayName = name;
-          if (name.includes(".")) displayName = name.split(".").pop()!;
-
-          if (/^app\./.test(name)) displayName = name;
-
-          addBlock(displayName, locStart(body), locEnd(body));
-        }
-      }
-    },
-  });
-
-  const sortByStart = (arr: SymbolInfo[]) =>
-    arr.sort((a, b) => (a.start || 0) - (b.start || 0));
-
-  const sortByStart2 = (arr: ApiInfo[]) =>
-    arr.sort((a, b) => (a.start || 0) - (b.start || 0));
+    }
+  }
+
+  const sortByStart = (arr: any) =>
+    arr.sort((a: any, b: any) => (a.start || 0) - (b.start || 0));
 
   return {
-    imports: sortByStart(imports),
-    functions: sortByStart(functions),
-    classes: sortByStart(classes),
-    components: sortByStart(components),
-    interfaces: sortByStart(interfaces),
-    exports: sortByStart(exports),
-    blocks: sortByStart(blocks),
-    apis: sortByStart2(apis),
-    schemas: sortByStart(schemas),
+    imports: sortByStart(ctx.imports),
+    functions: sortByStart(ctx.functions),
+    classes: sortByStart(ctx.classes),
+    components: sortByStart(ctx.components),
+    interfaces: sortByStart(ctx.interfaces),
+    exports: sortByStart(ctx.exports),
+    blocks: sortByStart(ctx.blocks),
+    apis: sortByStart(ctx.apis),
+    schemas: sortByStart(ctx.schemas),
+    ...(ctx.errors.length ? { errors: ctx.errors } : {}),
   };
 }

@@ -52,6 +52,8 @@ import {
   patchGraphOnFileDelete,
   patchGraphOnFileRename,
 } from "@/app/api/lib/graph/graphPatcher";
+import { ImpactSummaryCard } from "./ImpactSummaryCard";
+import { FlowGraph } from "@/app/api/lib/analyzer/types";
 
 interface FileViewerPanelProps {
   projectId: number | ObjectId;
@@ -117,7 +119,7 @@ export default function FileViewerPanel({
     Record<string, { toggleTop: number; placeholderTop: number }>
   >({});
   const [showDocs, setShowDocs] = useState(false);
-  const [graphData, setGraphData] = useState<{ nodes: any[]; edges: any[] }>({
+  const [graphData, setGraphData] = useState<FlowGraph>({
     nodes: [],
     edges: [],
   });
@@ -685,6 +687,8 @@ export default function FileViewerPanel({
               setGraphData={setGraphData}
               project={project}
             />
+
+            <ImpactSummaryCard graph={graphData} />
 
             {selectedFileNode?.language && (
               <>
