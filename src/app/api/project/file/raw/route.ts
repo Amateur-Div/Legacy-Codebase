@@ -14,19 +14,22 @@ export async function GET(req: NextRequest) {
     if (!projectId || !filePath) {
       return NextResponse.json(
         { error: "Missing parameters" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const db = (await clientPromise).db();
 
-    const fileDoc = await db.collection("project_files").findOne({ projectId });
+    const fileDoc = await db.collection("project_files").findOne({
+      projectId,
+      path: filePath,
+    });
 
-    if (!fileDoc || !fileDoc.files || !fileDoc.files[filePath]) {
+    if (!fileDoc) {
       return NextResponse.json({ error: "File not found" }, { status: 404 });
     }
 
-    const content = fileDoc.files[filePath];
+    const content = fileDoc.content;
 
     return new Response(content, {
       status: 200,

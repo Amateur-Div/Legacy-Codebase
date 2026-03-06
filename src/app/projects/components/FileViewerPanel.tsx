@@ -129,6 +129,13 @@ export default function FileViewerPanel({
   const PRE_PADDING_LEFT = 16;
   const GUTTER_WIDTH = 40;
 
+  const lineCount = useMemo(
+    () => fileContent.split("\n").length ?? 0,
+    [fileContent],
+  );
+
+  const isLargeFile = lineCount > 1000;
+
   useEffect(() => {
     setActiveFile(selectedPath!);
   }, [selectedPath]);
@@ -206,6 +213,7 @@ export default function FileViewerPanel({
   useLayoutEffect(() => {
     const container = codeContainerRef.current;
     if (!container) return;
+    if (isLargeFile) return;
 
     const compute = () => {
       const next: Record<number, { top: number; left: number }> = {};
@@ -239,6 +247,7 @@ export default function FileViewerPanel({
   useLayoutEffect(() => {
     const container = codeContainerRef.current;
     if (!container) return;
+    if (isLargeFile) return;
 
     const next: Record<string, { toggleTop: number; placeholderTop: number }> =
       {};
@@ -554,41 +563,6 @@ export default function FileViewerPanel({
     return false;
   };
 
-  function ImpactSection({
-    title,
-    items,
-    emptyLabel,
-    onSelect,
-  }: {
-    title: string;
-    items: string[];
-    emptyLabel: string;
-    onSelect: (path: string) => void;
-  }) {
-    return (
-      <div>
-        <div className="mb-1 text-sm font-medium text-gray-700">{title}</div>
-
-        {items.length > 0 ? (
-          <ul className="space-y-1 rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2">
-            {items.map((item) => (
-              <li
-                key={item}
-                onClick={() => onSelect(item)}
-                className="cursor-pointer truncate rounded px-1 py-0.5 font-mono text-gray-700 hover:bg-gray-100 hover:text-gray-900"
-                title={item}
-              >
-                {item}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="ml-1 text-xs text-gray-400">{emptyLabel}</p>
-        )}
-      </div>
-    );
-  }
-
   return (
     <>
       <div className="bg-card border rounded-2xl p-6 shadow-sm overflow-auto max-h-[650px]">
@@ -686,9 +660,13 @@ export default function FileViewerPanel({
               graphData={graphData}
               setGraphData={setGraphData}
               project={project}
+              selectedFileNode={selectedFileNode}
             />
 
-            <ImpactSummaryCard graph={graphData} />
+            <ImpactSummaryCard
+              graph={graphData}
+              onFileChange={setSelectedPath}
+            />
 
             {selectedFileNode?.language && (
               <>
@@ -862,6 +840,21 @@ export default function FileViewerPanel({
                 <pre className="whitespace-pre-wrap text-sm bg-muted p-4 rounded max-w-full overflow-auto">
                   {fileContent}
                 </pre>
+              ) : isLargeFile ? (
+                <div className="relative">
+                  <div className="absolute top-2 right-3 text-xs text-yellow-400 bg-black/70 px-2 py-1 rounded">
+                    Large file detected ({lineCount} lines) — syntax features
+                    disabled
+                  </div>
+                  <pre
+                    className="whitespace-pre text-sm bg-muted p-4 rounded max-w-full overflow-auto font-mono"
+                    style={{
+                      lineHeight: "1.6",
+                    }}
+                  >
+                    {fileContent}
+                  </pre>
+                </div>
               ) : (
                 <SyntaxHighlighter
                   language={detectLanguage(selectedPath)}
@@ -935,104 +928,111 @@ export default function FileViewerPanel({
                 </SyntaxHighlighter>
               )}
 
-              {foldBlocks.map((block) => {
-                const key = `${block.start}-${block.end}`;
-                const pos = foldPositions[key];
-                if (!pos) return null;
-                const isFolded = foldedRanges.has(key);
+              {!isLargeFile &&
+                foldBlocks.map((block) => {
+                  const key = `${block.start}-${block.end}`;
+                  const pos = foldPositions[key];
+                  if (!pos) return null;
+                  const isFolded = foldedRanges.has(key);
 
-                return (
+                  return (
+                    <button
+                      key={`fold-toggle-${key}`}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleFold(key);
+                      }}
+                      className="absolute rounded pl-1 pt-0.5 opacity-0 hover:opacity-100 transition-opacity"
+                      style={{
+                        left:
+                          PRE_PADDING_LEFT +
+                          GUTTER_WIDTH -
+                          10 -
+                          innerScrollLeft,
+                        top: pos.toggleTop,
+                        zIndex: 40,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        pointerEvents: "auto",
+                        background: "transparent",
+                        border: "none",
+                      }}
+                      aria-label={`Fold toggle for ${block.name}`}
+                    >
+                      {isFolded ? (
+                        <ChevronRight className="w-3 h-3 text-gray-300" />
+                      ) : (
+                        <ChevronDown className="w-3 h-3 text-gray-300" />
+                      )}
+                    </button>
+                  );
+                })}
+
+              {!isLargeFile &&
+                Object.entries(comments ?? {}).map(([lnStr, texts]) => {
+                  const ln = Number(lnStr);
+                  const lineEl = codeContainerRef.current?.querySelector(
+                    `[data-line-number="${ln}"]`,
+                  ) as HTMLElement | null;
+                  if (!lineEl) return null;
+
+                  const count = texts.length;
+                  const reserved = count * COMMENT_ROW_HEIGHT + COMMENT_GAP;
+
+                  return (
+                    <div
+                      key={ln}
+                      className="absolute"
+                      style={{
+                        top: lineEl.offsetTop + lineEl.offsetHeight - reserved,
+                        left: PRE_PADDING_LEFT * 3 + GUTTER_WIDTH + 8,
+                        right: PRE_PADDING_LEFT,
+                        pointerEvents: "none",
+                      }}
+                    >
+                      {texts.map((t, i) => (
+                        <div
+                          key={i}
+                          className="font-mono text-xs italic text-gray-400 whitespace-pre-wrap"
+                          style={{ height: COMMENT_ROW_HEIGHT }}
+                        >
+                          <span>// {t}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+
+              {!isLargeFile &&
+                hoveredLine !== null &&
+                hoveredLinePos !== null && (
                   <button
-                    key={`fold-toggle-${key}`}
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleFold(key);
+                    data-role="comment-button"
+                    onMouseLeave={() => {
+                      setHoveredLine(null);
+                      setHoveredLinePos(null);
                     }}
-                    className="absolute rounded pl-1 pt-0.5 opacity-0 hover:opacity-100 transition-opacity"
+                    onClick={() =>
+                      setOpenCommentDialog({ open: true, line: hoveredLine })
+                    }
+                    className="absolute rounded p-1 hover:bg-muted/60"
                     style={{
-                      left:
-                        PRE_PADDING_LEFT + GUTTER_WIDTH - 10 - innerScrollLeft,
-                      top: pos.toggleTop,
-                      zIndex: 40,
+                      right: 8,
+                      top: Math.max(0, hoveredLinePos - 6),
+                      zIndex: 30,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       pointerEvents: "auto",
-                      background: "transparent",
-                      border: "none",
                     }}
-                    aria-label={`Fold toggle for ${block.name}`}
+                    aria-label={`Add comment on line ${hoveredLine}`}
                   >
-                    {isFolded ? (
-                      <ChevronRight className="w-3 h-3 text-gray-300" />
-                    ) : (
-                      <ChevronDown className="w-3 h-3 text-gray-300" />
-                    )}
+                    <PlusIcon size={14} className="text-gray-400" />
                   </button>
-                );
-              })}
-
-              {Object.entries(comments ?? {}).map(([lnStr, texts]) => {
-                const ln = Number(lnStr);
-                const lineEl = codeContainerRef.current?.querySelector(
-                  `[data-line-number="${ln}"]`,
-                ) as HTMLElement | null;
-                if (!lineEl) return null;
-
-                const count = texts.length;
-                const reserved = count * COMMENT_ROW_HEIGHT + COMMENT_GAP;
-
-                return (
-                  <div
-                    key={ln}
-                    className="absolute"
-                    style={{
-                      top: lineEl.offsetTop + lineEl.offsetHeight - reserved,
-                      left: PRE_PADDING_LEFT * 3 + GUTTER_WIDTH + 8,
-                      right: PRE_PADDING_LEFT,
-                      pointerEvents: "none",
-                    }}
-                  >
-                    {texts.map((t, i) => (
-                      <div
-                        key={i}
-                        className="font-mono text-xs italic text-gray-400 whitespace-pre-wrap"
-                        style={{ height: COMMENT_ROW_HEIGHT }}
-                      >
-                        <span>// {t}</span>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })}
-
-              {hoveredLine !== null && hoveredLinePos !== null && (
-                <button
-                  type="button"
-                  data-role="comment-button"
-                  onMouseLeave={() => {
-                    setHoveredLine(null);
-                    setHoveredLinePos(null);
-                  }}
-                  onClick={() =>
-                    setOpenCommentDialog({ open: true, line: hoveredLine })
-                  }
-                  className="absolute rounded p-1 hover:bg-muted/60"
-                  style={{
-                    right: 8,
-                    top: Math.max(0, hoveredLinePos - 6),
-                    zIndex: 30,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    pointerEvents: "auto",
-                  }}
-                  aria-label={`Add comment on line ${hoveredLine}`}
-                >
-                  <PlusIcon size={14} className="text-gray-400" />
-                </button>
-              )}
+                )}
 
               {openCommentDialog && (
                 <Dialog

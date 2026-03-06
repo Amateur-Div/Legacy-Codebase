@@ -18,20 +18,23 @@ export async function GET(req: NextRequest) {
     if (!projectId || !filePath) {
       return NextResponse.json(
         { error: "Missing parameters" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const db = (await clientPromise).db();
 
-    const fileDoc = await db.collection("project_files").findOne({ projectId });
+    const fileDoc = await db.collection("project_files").findOne({
+      projectId,
+      path: filePath,
+    });
 
-    if (!fileDoc || !fileDoc.files || !fileDoc.files[filePath]) {
+    if (!fileDoc) {
       return NextResponse.json({ error: "File not found" }, { status: 404 });
     }
 
     return NextResponse.json({
-      content: fileDoc.files[filePath],
+      content: fileDoc.content ?? "",
     });
   } catch (err) {
     console.error("FILE_READ_ERROR", err);
@@ -63,7 +66,7 @@ function renameInTree(nodes: any[], oldPath: string, newPath: string): any[] {
 function updateImportsOnRename(
   nodes: any[],
   oldBase: string,
-  newBase: string
+  newBase: string,
 ): any[] {
   return nodes.map((node) => {
     if (node.type === "file" && Array.isArray(node.imports)) {
@@ -100,7 +103,7 @@ function updateImportsOnRename(
 function collectFilesImporting(
   nodes: any[],
   oldBase: string,
-  acc: Set<string> = new Set()
+  acc: Set<string> = new Set(),
 ): Set<string> {
   for (const node of nodes) {
     if (node.type === "file" && Array.isArray(node.imports)) {
@@ -134,14 +137,13 @@ export async function POST(req: NextRequest) {
     if (!oldPath || !newName) {
       return NextResponse.json(
         { error: "Missing parameters" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const db = (await clientPromise).db();
 
     const project = await db.collection("projects").findOne({ projectId });
-
     if (!project) throw new Error("Project not found");
 
     const ext = oldPath.includes(".")
@@ -156,8 +158,8 @@ export async function POST(req: NextRequest) {
       dir.length > 0
         ? `${dir}/${newName.endsWith(ext) ? newName : newName + ext}`
         : newName.endsWith(ext)
-        ? newName
-        : newName + ext;
+          ? newName
+          : newName + ext;
 
     const updatedTree = renameInTree(project.fileTree, oldPath, newPath);
 
@@ -167,45 +169,41 @@ export async function POST(req: NextRequest) {
     const treeWithUpdatedImports = updateImportsOnRename(
       updatedTree,
       oldBase,
-      newBase
+      newBase,
     );
 
-    const treeWithUpdatedCrossFileImpact = attachCrossFileImpact(
-      treeWithUpdatedImports
-    );
+    const treeWithImpact = attachCrossFileImpact(treeWithUpdatedImports);
 
     await db
       .collection("projects")
-      .updateOne(
-        { projectId },
-        { $set: { fileTree: treeWithUpdatedCrossFileImpact } }
-      );
+      .updateOne({ projectId }, { $set: { fileTree: treeWithImpact } });
 
-    const fileDoc = await db.collection("project_files").findOne({ projectId });
+    await db
+      .collection("project_files")
+      .updateOne({ projectId, path: oldPath }, { $set: { path: newPath } });
 
-    if (fileDoc?.files && fileDoc.files[oldPath]) {
-      const updatedFiles: Record<string, string> = {};
+    const affectedFiles = collectFilesImporting(project.fileTree, oldBase);
 
-      for (const [filePath, content] of Object.entries(fileDoc.files)) {
-        if (filePath === oldPath) {
-          updatedFiles[newPath] = content as string;
-        } else {
-          updatedFiles[filePath] = content as string;
-        }
+    for (const filePath of affectedFiles) {
+      const fileDoc = await db.collection("project_files").findOne({
+        projectId,
+        path: filePath,
+      });
+
+      if (fileDoc?.content) {
+        const updatedCode = rewriteImportsAST(
+          fileDoc.content,
+          oldBase,
+          newBase,
+        );
+
+        await db
+          .collection("project_files")
+          .updateOne(
+            { projectId, path: filePath },
+            { $set: { content: updatedCode } },
+          );
       }
-
-      const affectedFiles = collectFilesImporting(project.fileTree, oldBase);
-
-      for (const filePath of affectedFiles) {
-        const code = updatedFiles[filePath];
-        if (typeof code === "string") {
-          updatedFiles[filePath] = rewriteImportsAST(code, oldBase, newBase);
-        }
-      }
-
-      await db
-        .collection("project_files")
-        .updateOne({ projectId }, { $set: { files: updatedFiles } });
     }
 
     return NextResponse.json({ success: true, newPath });
@@ -213,7 +211,7 @@ export async function POST(req: NextRequest) {
     console.error("Rename failed:", error);
     return NextResponse.json(
       { success: false, error: (error as Error).message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -249,10 +247,7 @@ export async function DELETE(req: NextRequest) {
 
     const db = (await clientPromise).db();
 
-    const project = await db
-      .collection("projects")
-      .findOne({ _id: new ObjectId(projectId) });
-
+    const project = await db.collection("projects").findOne({ projectId });
     if (!project) throw new Error("Project not found");
 
     let updatedTree = deleteFromTree(project.fileTree, oldPath);
@@ -260,21 +255,12 @@ export async function DELETE(req: NextRequest) {
 
     await db
       .collection("projects")
-      .updateOne(
-        { _id: new ObjectId(projectId) },
-        { $set: { fileTree: updatedTree } }
-      );
+      .updateOne({ projectId }, { $set: { fileTree: updatedTree } });
 
-    const fileDoc = await db.collection("project_files").findOne({ projectId });
-
-    if (fileDoc && fileDoc.files && fileDoc.files[oldPath]) {
-      const newFiles = { ...fileDoc.files };
-      delete newFiles[oldPath];
-
-      await db
-        .collection("project_files")
-        .updateOne({ projectId }, { $set: { files: newFiles } });
-    }
+    await db.collection("project_files").deleteOne({
+      projectId,
+      path: oldPath,
+    });
 
     return NextResponse.json({
       success: true,
@@ -284,7 +270,7 @@ export async function DELETE(req: NextRequest) {
     console.error("Error deleting file:", error);
     return NextResponse.json(
       { success: false, error: (error as Error).message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -10,8 +10,8 @@ export async function GET(
   req: NextRequest,
   context: { params: Promise<{ projectId: string; jobId: string }> },
 ) {
-  const url = new URL(req.url);
-  const token = url.searchParams.get("token");
+  const searchParams = req.nextUrl.searchParams;
+  const token = searchParams.get("token");
 
   const { uid } = await authMiddleware(token);
 

@@ -177,6 +177,10 @@ function createContext(filePath: string, code: string): ExtractContext {
   };
 }
 
+function normalizeFilePath(path: string) {
+  return path.replace(/\\/g, "/");
+}
+
 function createImportVisitor(ctx: ExtractContext) {
   return {
     enter(path: any) {
@@ -187,6 +191,7 @@ function createImportVisitor(ctx: ExtractContext) {
         if (!ctx.seen.imports.has(val)) {
           ctx.seen.imports.add(val);
           ctx.imports.push({
+            id: `import:${normalizeFilePath(ctx.filePath)}:${val}`,
             name: val,
             start: node.loc?.start.line ?? 0,
             end: node.loc?.end.line ?? null,
@@ -205,6 +210,7 @@ function createImportVisitor(ctx: ExtractContext) {
         if (!ctx.seen.imports.has(val)) {
           ctx.seen.imports.add(val);
           ctx.imports.push({
+            id: `import:${normalizeFilePath(ctx.filePath)}:${val}`,
             name: val,
             start: node.loc?.start.line ?? 0,
             end: node.loc?.end.line ?? null,
@@ -217,6 +223,7 @@ function createImportVisitor(ctx: ExtractContext) {
         if (!ctx.seen.imports.has(val)) {
           ctx.seen.imports.add(val);
           ctx.imports.push({
+            id: `import:${normalizeFilePath(ctx.filePath)}:${val}`,
             name: val,
             start: node.loc?.start.line ?? 0,
             end: node.loc?.end.line ?? null,
@@ -300,6 +307,7 @@ export function extractStructureBabel(
 
           if (!ctx.seen.components.has(key)) {
             ctx.components.push({
+              id: `component:${normalizeFilePath(ctx.filePath)}`,
               name: path.node.id!.name,
               start: locStart(path.node),
               end: locEnd(path.node),
@@ -395,6 +403,7 @@ export function extractStructureBabel(
             if (!ctx.seen.components.has(key)) {
               ctx.seen.components.add(key);
               ctx.components.push({
+                id: `component:${normalizeFilePath(ctx.filePath)}`,
                 name: id.name,
                 start: locStart(init),
                 end: locEnd(init),
@@ -459,6 +468,7 @@ export function extractStructureBabel(
           );
           if (!ctx.seen.components.has(key)) {
             ctx.components.push({
+              id: `component:${normalizeFilePath(ctx.filePath)}`,
               name: path.node.id.name,
               start: locStart(path.node),
               end: locEnd(path.node),
@@ -502,6 +512,7 @@ export function extractStructureBabel(
             const fullPath = joinPaths(basePath, methodPath);
 
             ctx.apis.push({
+              id: `api:${normalizeFilePath(ctx.filePath)}`,
               method: methodName,
               path: fullPath,
               start: elem.loc?.start?.line ?? 0,
@@ -678,6 +689,25 @@ export function extractStructureBabel(
         const right = path.node.right as any;
         const start = path.node.loc?.start.line;
         const end = path.node.loc?.end.line;
+
+        if (
+          left.type === "MemberExpression" &&
+          right &&
+          (right.type === "FunctionExpression" ||
+            right.type === "ArrowFunctionExpression")
+        ) {
+          const fnName =
+            left.property?.type === "Identifier" ? left.property.name : null;
+
+          if (fnName) {
+            addSymbol(fnName, {
+              type: "function",
+              start,
+              end,
+            });
+            addFnBodyAsBlock(fnName, right);
+          }
+        }
 
         if (
           left.type === "MemberExpression" &&
@@ -962,7 +992,7 @@ export function extractStructureBabel(
 
         const routeInfo = extractRouteFromCall(node);
         if (routeInfo) {
-          let finalPath;
+          let finalPath = routeInfo.path;
           if (routeInfo.mountFor && routerMounts.has(routeInfo.mountFor)) {
             finalPath = joinPaths(
               routerMounts.get(routeInfo.mountFor)!,
@@ -977,25 +1007,6 @@ export function extractStructureBabel(
             end: routeInfo.end,
             framework: routeInfo.framework,
           });
-        }
-
-        if (
-          callee.type === "MemberExpression" &&
-          callee.property?.type === "Identifier"
-        ) {
-          const method = callee.property.name.toUpperCase();
-          if (HTTP_METHODS.has(method)) {
-            const firstArg = args?.[0];
-            if (firstArg && firstArg.type === "StringLiteral") {
-              addApi({
-                method,
-                path: firstArg.value,
-                start: locStart(node),
-                end: locEnd(node),
-                framework: "express",
-              });
-            }
-          }
         }
 
         if (
@@ -1118,10 +1129,6 @@ export function extractStructureBabel(
     };
   }
 
-  function normalizeFilePath(path: string) {
-    return path.replace(/\\/g, "/");
-  }
-
   function makeSymbolId(type: string, filePath: string, name: string) {
     return `${type}:${normalizeFilePath(filePath)}:${name}`;
   }
@@ -1199,7 +1206,12 @@ export function extractStructureBabel(
   const addImportIfNew = (val: string, start: number, end: number | null) => {
     if (!ctx.seen.imports.has(val)) {
       ctx.seen.imports.add(val);
-      ctx.imports.push({ name: val, start, end });
+      ctx.imports.push({
+        id: `import:${normalizeFilePath(ctx.filePath)}:${val}`,
+        name: val,
+        start,
+        end,
+      });
     }
   };
 
@@ -1220,7 +1232,12 @@ export function extractStructureBabel(
     const key = makeKey(name, start!, end!);
     if (ctx.seen.blocks.has(key)) return;
     ctx.seen.blocks.add(key);
-    ctx.blocks.push({ name, start: start!, end: end! });
+    ctx.blocks.push({
+      id: `block:${normalizeFilePath(ctx.filePath)}:${name}:${start}`,
+      name,
+      start: start!,
+      end: end!,
+    });
   };
 
   function addApi(
@@ -1434,7 +1451,11 @@ export function extractStructureBabel(
     const method = prop.name.toUpperCase();
     if (!HTTP_METHODS.has(method)) return null;
 
-    if (callee.object && callee.object.type === "Identifier") {
+    if (
+      callee.object &&
+      callee.object.type === "Identifier" &&
+      ["app", "router"].includes(callee.object.name)
+    ) {
       const firstArg = node.arguments && node.arguments[0];
       const pathStr = getStringFromNode(firstArg) ?? "<dynamic>";
       return {

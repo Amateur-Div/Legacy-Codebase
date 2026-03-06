@@ -7,10 +7,11 @@ import type { FlowGraph } from "@/app/api/lib/analyzer/types";
 
 type Props = {
   graph: FlowGraph;
+  onFileChange: any;
 };
 
-export function ImpactSummaryCard({ graph }: Props) {
-  const intelligence = graph.meta?.intelligence;
+export function ImpactSummaryCard({ graph, onFileChange }: Props) {
+  const intelligence = graph?.meta?.intelligence;
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
 
   if (!intelligence) return null;
@@ -35,6 +36,19 @@ export function ImpactSummaryCard({ graph }: Props) {
 
           <div>
             <span className="font-semibold">Dead Files:</span> {deadCount}
+            <div className="overflow-auto h-36">
+              {intelligence.deadFiles
+                .map((file, i) => (
+                  <div
+                    key={i}
+                    className="hover:underline hover:text-blue-500 hover:cursor-pointer"
+                    onClick={() => onFileChange(file.replace(/^file::/, ""))}
+                  >
+                    {file.replace(/^file::/, "")}
+                  </div>
+                ))
+                .slice(0, 30)}
+            </div>
           </div>
 
           <div>

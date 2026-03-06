@@ -1,7 +1,4 @@
 import { FlowGraph, FlowNode, FlowEdge } from "./types";
-import path from "path";
-import fs from "fs";
-
 /**
  * IMPORTANT:
  * - This function MUST NOT mutate input graphs.
@@ -43,7 +40,10 @@ export function mergeFileGraphs(
     }
 
     for (const node of nodes) {
-      mergedNodes.push(node);
+      mergedNodes.push({
+        ...node,
+        file: file,
+      });
 
       const isEntryNode = node.type !== "file" && !incomingCount.has(node.id);
 

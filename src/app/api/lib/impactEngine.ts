@@ -172,6 +172,27 @@ function buildIncomingImportCount(graph: FlowGraph) {
   return incoming;
 }
 
+function isNonRuntimeFile(filePath: string) {
+  const p = filePath.replace(/\\/g, "/").toLowerCase();
+
+  const patterns = [
+    "/test/",
+    "/tests/",
+    "/spec/",
+    "/perf/",
+    "/benchmark/",
+    "/bench/",
+    "/scripts/",
+    "/build/",
+    "/tools/",
+    "/examples/",
+    "/docs/",
+    "/vendor/",
+  ];
+
+  return patterns.some((pattern) => p.includes(pattern));
+}
+
 export function findDeadFiles(
   graph: FlowGraph,
   entryFileIds: Set<string> = new Set(),
@@ -186,7 +207,9 @@ export function findDeadFiles(
     const hasIncoming = incoming.has(node.id);
 
     if (!hasIncoming && !entryFileIds.has(node.id)) {
-      deadFiles.push(node.id);
+      if (!isNonRuntimeFile(node.id)) {
+        deadFiles.push(node.id);
+      }
     }
   }
 

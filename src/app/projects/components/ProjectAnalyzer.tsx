@@ -12,6 +12,7 @@ export default function ProjectAnalyzer({
   graphData,
   setGraphData,
   project,
+  selectedFileNode,
 }: {
   id: string;
   projectId: any;
@@ -27,6 +28,7 @@ export default function ProjectAnalyzer({
     };
   }) => void;
   project: any;
+  selectedFileNode: any;
 }) {
   const { jobId, setJobId } = useAuth();
   const [status, setStatus] = useState<
@@ -47,10 +49,9 @@ export default function ProjectAnalyzer({
 
     const connectSSE = async () => {
       const token = await getAuth().currentUser?.getIdToken();
+
       if (!token) return;
-      const url = `/api/projects/${projectId}/jobs/${jobId}/events?token=${encodeURIComponent(
-        token!,
-      )}`;
+      const url = `/api/projects/${projectId}/jobs/${jobId}/events?token=${encodeURIComponent(token!)}`;
 
       console.log("[SSE] connecting to", url);
       try {
@@ -89,7 +90,7 @@ export default function ProjectAnalyzer({
           const data = JSON.parse(e.data);
 
           if (data?.result?.graph) {
-            setGraphData(data.result.graph);
+            setGraphData(data.graphs?.[0]?.record);
           }
 
           setProgress(100);
@@ -124,9 +125,20 @@ export default function ProjectAnalyzer({
     };
 
     const fetchJobStatus = async () => {
+      const token = await getAuth().currentUser?.getIdToken();
+      if (!token) {
+        return;
+      }
+
       try {
-        const res = await fetch(`/api/projects/${projectId}/jobs/${jobId}`);
+        const res = await fetch(
+          `/api/projects/${projectId}/jobs/${jobId}?token=${encodeURIComponent(token!)}`,
+        );
         if (!res.ok) return null;
+
+        const data = await res.json();
+        console.log("Data inside fetchJobStatus : ", data);
+
         return await res.json();
       } catch (err) {
         console.error("[poll] job status fetch error", err);
@@ -203,6 +215,7 @@ export default function ProjectAnalyzer({
           graphData={graphData}
           setGraphData={setGraphData}
           project={project}
+          selectedFileNode={selectedFileNode}
         />
       </ReactFlowProvider>
     );

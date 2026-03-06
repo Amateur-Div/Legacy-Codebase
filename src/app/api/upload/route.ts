@@ -16,6 +16,20 @@ import { instrumentExecutionBabel } from "../lib/instrumentExecutionBabel";
 import { attachCrossFileImpact } from "../lib/buildCrossFileImpactMap";
 import { enqueueJob } from "../lib/jobs/jobManager";
 
+const IGNORE_DIRS = new Set([
+  "node_modules",
+  ".git",
+  "dist",
+  "build",
+  "coverage",
+  ".next",
+  ".turbo",
+  ".cache",
+]);
+
+const MAX_FILE_SIZE_BYTES = 1024 * 1024;
+const MAX_STORE_SIZE_BYTES = 15 * 1024 * 1024;
+
 function extractHighlights(code: string) {
   const ast = babelParser.parse(code, {
     sourceType: "unambiguous",
@@ -37,6 +51,10 @@ function extractHighlights(code: string) {
   });
 
   return { todos, fixmes, notes };
+}
+
+function isBinaryFile(buffer: Buffer) {
+  return buffer.includes(0);
 }
 
 function isEntryFile(name: string, content: string): boolean {
@@ -167,27 +185,34 @@ async function buildFileTree(files: string[], rootDir: string) {
             const stats = fs.statSync(absolutePath);
             size = stats.size;
 
-            const content = fs.readFileSync(absolutePath, "utf-8");
-            loc = content.split("\n").length;
+            if (size <= MAX_FILE_SIZE_BYTES) {
+              const buffer = fs.readFileSync(absolutePath);
 
-            entry = isEntryFile(file, content);
+              if (!isBinaryFile(buffer)) {
+                const content = buffer.toString("utf-8");
+                loc = content.split("\n").length;
 
-            const ext = part.split(".").pop()?.toLowerCase();
-            if (["js", "ts", "jsx", "tsx"].includes(ext || "")) {
-              trackExecution = instrumentExecutionBabel(content);
-              highlights = extractHighlights(content);
-              const symbols = extractStructureBabel(fullPath, content);
-              imports = symbols.imports;
-              functions = symbols.functions;
-              classes = symbols.classes;
-              components = symbols.components;
-              exports = symbols.exports;
-              apis = symbols.apis;
-              schemas = symbols.schemas;
-              blocks = symbols.blocks;
+                entry = isEntryFile(file, content);
+
+                const ext = part.split(".").pop()?.toLowerCase();
+                if (["js", "ts", "jsx", "tsx"].includes(ext || "")) {
+                  trackExecution = instrumentExecutionBabel(content);
+                  highlights = extractHighlights(content);
+                  const symbols = extractStructureBabel(fullPath, content);
+                  imports = symbols.imports;
+                  functions = symbols.functions;
+                  classes = symbols.classes;
+                  components = symbols.components;
+                  exports = symbols.exports;
+                  apis = symbols.apis;
+                  schemas = symbols.schemas;
+                  blocks = symbols.blocks;
+                }
+              }
             }
-          } catch {
+          } catch (err: any) {
             console.warn("Failed to read file:", fullPath);
+            console.log("Error reading files : ", err);
           }
         }
 
@@ -232,11 +257,8 @@ export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get("Authorization") || "";
     const token = authHeader.replace("Bearer ", "");
-    const { uid } = await authMiddleware(token);
 
-    if (!uid) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const { uid } = await authMiddleware(token);
 
     const formData = await req.formData();
     const file = formData.get("file") as File;
@@ -277,29 +299,77 @@ export async function POST(req: NextRequest) {
 
     const walk = (dir: string): string[] => {
       let results: string[] = [];
+
       for (const item of fs.readdirSync(dir)) {
+        if (IGNORE_DIRS.has(item)) continue;
+
         const full = path.join(dir, item);
         const rel = path.relative(extractRoot!, full).split(path.sep).join("/");
-        if (fs.statSync(full).isDirectory()) {
+
+        const stat = fs.statSync(full);
+
+        if (stat.isDirectory()) {
           results.push(rel + "/");
           results = results.concat(walk(full));
-        } else results.push(rel);
+        } else {
+          results.push(rel);
+        }
       }
+
       return results;
     };
 
     const allFiles = walk(extractRoot);
     const fileTree = await buildFileTree(allFiles, extractRoot);
 
-    const filesMap: Record<string, string> = {};
+    const fileDocs: any[] = [];
+    let totalStoredBytes = 0;
+
     for (const f of allFiles) {
       const abs = path.join(extractRoot, f);
-      if (existsSync(abs) && abs.match(/\.(js|jsx|ts|tsx)$/)) {
-        filesMap[f] = fs.readFileSync(abs, "utf-8");
+      if (!existsSync(abs)) continue;
+
+      const stats = fs.statSync(abs);
+      if (!stats.isFile()) continue;
+
+      const size = stats.size;
+
+      const ext = f.split(".").pop()?.toLowerCase();
+      const isCode = ["js", "jsx", "ts", "tsx"].includes(ext || "");
+
+      let content: string | undefined = undefined;
+
+      if (size <= MAX_FILE_SIZE_BYTES) {
+        const buffer = fs.readFileSync(abs);
+        if (!isBinaryFile(buffer)) {
+          const text = buffer.toString("utf-8");
+
+          if (isCode) {
+            totalStoredBytes += Buffer.byteLength(text);
+            if (totalStoredBytes <= MAX_STORE_SIZE_BYTES) {
+              content = text;
+            }
+          } else {
+            content = text;
+          }
+        }
       }
+
+      fileDocs.push({
+        projectId,
+        path: f,
+        content,
+        size,
+        language: detectLanguage(f),
+        isCode,
+        createdAt: new Date(),
+      });
     }
 
-    const job = await enqueueJob(projectId, fileTree, filesMap, uid);
+    console.log("Stored JS/TS bytes:", totalStoredBytes);
+
+    attachCrossFileImpact(fileTree);
+    const job = await enqueueJob(projectId, fileTree, fileDocs, uid);
 
     const entryPoints: string[] = [];
     const walkTree = (nodes: any[]) =>
@@ -315,7 +385,6 @@ export async function POST(req: NextRequest) {
     const db = mongoClient.db();
 
     const tags = detectTags(packageInfo, fileTree);
-    attachCrossFileImpact(fileTree);
 
     await db.collection("projects").insertOne({
       ownerId: uid,
@@ -331,11 +400,9 @@ export async function POST(req: NextRequest) {
       tags,
     });
 
-    await db.collection("project_files").insertOne({
-      projectId,
-      files: filesMap,
-      createdAt: new Date(),
-    });
+    if (fileDocs.length) {
+      await db.collection("project_files").insertMany(fileDocs);
+    }
 
     return NextResponse.json({
       message: "Project saved",

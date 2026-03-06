@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     console.error("Error : ", error);
     return NextResponse.json(
       { success: false, error: (error as Error).message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -42,8 +42,6 @@ export async function GET(req: Request) {
   const filePath = searchParams.get("filePath");
 
   const db = (await clientPromise).db();
-
-  console.log("id : ", projectId, ", path : ", filePath);
 
   const comments = await db
     .collection("comments")

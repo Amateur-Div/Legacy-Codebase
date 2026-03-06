@@ -32,12 +32,12 @@ const JOBS = new Map<string, Job>();
 const JOB_PROGRESS_CALLBACKS = new Map<string, Set<(job: Job) => void>>();
 
 function emitJobUpdate(job: Job) {
-  console.log(
-    "📡 [emitJobUpdate] Emitting job update:",
-    job.id,
-    job.status,
-    job.progress,
-  );
+  // console.log(
+  //   "📡 [emitJobUpdate] Emitting job update:",
+  //   job.id,
+  //   job.status,
+  //   job.progress,
+  // );
   const set = JOB_PROGRESS_CALLBACKS.get(job.id);
   if (!set) return;
   for (const cb of set) {
@@ -98,7 +98,7 @@ export function listJobsForProject(projectId: string) {
 
 async function runAnalysisTask(
   projectId: any,
-  files: Record<string, string>,
+  files: any[],
   fileTree: any,
   job: Job,
   uid: any,
@@ -109,16 +109,22 @@ async function runAnalysisTask(
     job.message = "Analyzing files (1/4)";
     emitJobUpdate(job);
 
-    const fileEntries = Object.entries(files);
-    const totalFiles = fileEntries.length || 1;
+    const codeFiles = files.filter(
+      (f) => f.isCode && typeof f.content === "string",
+    );
+    const totalFiles = codeFiles.length || 1;
     const fileGraphs: {
       file: string;
       graph: { nodes: any[]; edges: any[] };
     }[] = [];
 
     let i = 0;
-    for (const [filePath, code] of fileEntries) {
+    for (const fileDoc of codeFiles) {
+      const filePath = fileDoc.path;
+      const code = fileDoc.content as string;
+
       i++;
+
       try {
         job.progress = Math.round(2 + (i / totalFiles) * 50);
         job.message = `Analyzing file ${i}/${totalFiles}: ${filePath}`;
@@ -146,18 +152,9 @@ async function runAnalysisTask(
     job.message = "Enriching semantics (3/4)";
     emitJobUpdate(job);
 
-    const withDeps = injectFileDependencyEdges(
-      {
-        mergedNodes: merged.nodes,
-        mergedEdges: merged.edges,
-      },
-      fileTree,
-    );
+    const withDeps = injectFileDependencyEdges(merged, fileTree);
 
-    const enriched = enrichGraphSemantics({
-      mergedNodes: withDeps.mergedNodes,
-      mergedEdges: withDeps.mergedEdges,
-    });
+    const enriched = enrichGraphSemantics(withDeps);
 
     job.progress = 95;
     job.message = "Saving graph (4/4)";
@@ -190,6 +187,10 @@ async function runAnalysisTask(
       );
     }
 
+    console.log("Dead files :", deadFiles.length);
+
+    console.log("\nCircular count :", circularDeps.length);
+
     console.log("About to save graph : ", job.projectId);
     await saveGraph(projectId, { ...styleGraph, meta: graphMeta }, uid);
 
@@ -207,6 +208,7 @@ async function runAnalysisTask(
 
     return job;
   } catch (err: any) {
+    console.log("Error inside job mananger : ", err);
     job.status = "error";
     job.error = String(err?.message ?? err);
     job.message = "Error during analysis";
@@ -218,13 +220,13 @@ async function runAnalysisTask(
 export function enqueueJob(
   projectId: string,
   fileTree: any,
-  files: Record<string, string>,
+  fileDocs: any[],
   ownerId?: string,
 ) {
   const job = createJob(projectId, ownerId);
   (async () => {
     try {
-      await runAnalysisTask(projectId, files, fileTree, job, ownerId);
+      await runAnalysisTask(projectId, fileDocs, fileTree, job, ownerId);
     } catch (err) {
       job.status = "error";
       job.error = String((err as any)?.message ?? err);

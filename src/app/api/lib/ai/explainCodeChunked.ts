@@ -1,8 +1,4 @@
-import { spawn } from "child_process";
-
-const OLLAMA_PATH =
-  "C:\\Users\\ACER\\AppData\\Local\\Programs\\Ollama\\ollama.exe";
-const MODEL = "llama3.2:1b";
+const MODEL = "qwen2.5-coder:1.5b";
 
 function chunkCode(code: string, maxLines = 80): string[] {
   const lines = code.split("\n");
@@ -21,22 +17,26 @@ function chunkCode(code: string, maxLines = 80): string[] {
 }
 
 async function queryOllama(prompt: string): Promise<string> {
-  return new Promise((resolve) => {
-    let output = "";
-    const proc = spawn(OLLAMA_PATH, ["run", MODEL], {
-      stdio: ["pipe", "pipe", "pipe"],
+  try {
+    const res = await fetch("http://127.0.0.1:11434/api/generate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        prompt,
+        stream: false,
+      }),
     });
 
-    proc.stdout.on("data", (data) => (output += data.toString()));
-    proc.stderr.on("data", (err) =>
-      console.error("Ollama stderr:", err.toString())
-    );
-    proc.on("error", (err) => resolve("⚠ Ollama failed: " + err.message));
-    proc.on("close", () => resolve(output.trim()));
+    const data = await res.json();
+    console.log("Data from queryOllama : ", data);
 
-    proc.stdin.write(prompt);
-    proc.stdin.end();
-  });
+    return data.response?.trim() || "";
+  } catch (err: any) {
+    return "⚠ Ollama API error: " + err.message;
+  }
 }
 
 export async function explainCodeChunked(code: string): Promise<string> {
@@ -54,7 +54,7 @@ export async function explainCodeChunked(code: string): Promise<string> {
   }
 
   const summaryPrompt = `Merge and summarize the following code explanations into one cohesive explanation:\n\n${explanations.join(
-    "\n\n"
+    "\n\n",
   )}`;
   const merged = await queryOllama(summaryPrompt);
 

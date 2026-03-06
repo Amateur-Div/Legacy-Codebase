@@ -10,7 +10,13 @@ export async function GET(
   const { params } = await context;
   const { jobId } = await params;
 
-  const token = req.headers.get("Authorization")?.split("Bearer ")[1];
+  console.log(
+    "req inside job route : ",
+    JSON.stringify(req.nextUrl.searchParams),
+  );
+
+  const searchParams = req.nextUrl.searchParams;
+  const token = searchParams.get("token");
 
   const { uid } = await authMiddleware(token);
 

@@ -24,10 +24,11 @@ import { getAuth } from "firebase/auth";
 import { useProjectPresence } from "../context/ProjectPresenceContext";
 import { FlowGraph } from "@/app/api/lib/analyzer/types";
 
-type GraphMode = "full" | "lite" | "disabled";
+type GraphMode = "full" | "disabled";
 
 interface Props {
   graphData: FlowGraph;
+  selectedFileNode: any;
   setGraphData: (graphData: {
     nodes: any[];
     edges: any[];
@@ -120,8 +121,6 @@ style.innerHTML = `
 `;
 document.head.appendChild(style);
 
-let disableFancyUI = false;
-
 const CustomNode = ({ data }: any) => {
   const nodeRef = useRef<HTMLDivElement | null>(null);
 
@@ -130,15 +129,15 @@ const CustomNode = ({ data }: any) => {
 
   const deadOpacity = data?.fadedByDead ? 0.05 : 1;
   const functionFocusOpacity = data?.fadedByFunctionFocus ? 0.05 : 1;
+  const architectureOpacity = data?.architectureDeadOpacity ?? 1;
 
-  const finalOpacity = disableFancyUI
-    ? 1
-    : Math.min(
-        filterOpacity,
-        highlightOpacity,
-        deadOpacity,
-        functionFocusOpacity,
-      );
+  const finalOpacity = Math.min(
+    filterOpacity,
+    highlightOpacity,
+    deadOpacity,
+    functionFocusOpacity,
+    architectureOpacity,
+  );
 
   const isDead = data?.fadedByDead;
   const showTooltip = () => {
@@ -171,12 +170,10 @@ const CustomNode = ({ data }: any) => {
         height: NODE_H - 24,
         opacity: finalOpacity,
         border: isDead ? "1px dashed #9CA3AF" : "1px solid #ccc",
-        transform:
-          !disableFancyUI && data?.focused ? "scale(1.08)" : "scale(1)",
-        boxShadow:
-          !disableFancyUI && data?.focused
-            ? "0 0 0 3px rgba(59,130,246,0.6)"
-            : "0 3px 6px rgba(0,0,0,0.08)",
+        transform: data?.focused ? "scale(1.08)" : "scale(1)",
+        boxShadow: data?.focused
+          ? "0 0 0 3px rgba(59,130,246,0.6)"
+          : "0 3px 6px rgba(0,0,0,0.08)",
         cursor: data?.fadedByFilter ? "not-allowed" : "default",
         pointerEvents: data?.fadedByFilter ? "none" : "auto",
       }}
@@ -219,6 +216,7 @@ export default function FlowVisualizer({
   setGraphData,
   id,
   project,
+  selectedFileNode,
 }: Props) {
   const { users, channelRef, subscribedRef } = useProjectPresence();
   const [heatmapMode, setHeatmapMode] = useState<
@@ -232,6 +230,7 @@ export default function FlowVisualizer({
   const [showLegend, setShowLegend] = useState<boolean>(false);
   const [nodeCount, setNodeCount] = useState(0);
   const [edgeCount, setEdgeCount] = useState(0);
+  const [graphScope, setGraphScope] = useState<"file" | "global">("file");
 
   useEffect(() => {
     const fetchGraphData = async () => {
@@ -244,9 +243,11 @@ export default function FlowVisualizer({
 
       const data = await res.json();
 
+      console.log(data);
+
       setGraphData(data.graphs?.[0]?.record);
-      setNodeCount(data.graphs?.[0].record?.meta?.nodeCount);
-      setEdgeCount(data.graphs?.[0].record?.meta?.edgeCount);
+      setNodeCount(data.graphs?.[0]?.record?.meta?.nodeCount);
+      setEdgeCount(data.graphs?.[0]?.record?.meta?.edgeCount);
     };
 
     fetchGraphData();
@@ -254,16 +255,18 @@ export default function FlowVisualizer({
 
   useEffect(() => {
     console.log(graphData);
+
+    console.log(
+      "Import edges : ",
+      graphData.edges.filter((e) => e.label === "imports").length,
+    );
+
+    console.log("Nodes : ", graphData.nodes.length);
+    console.log("edges : ", graphData.edges.length);
   }, [graphData]);
 
   const graphMode: GraphMode =
-    nodeCount > 1500 || edgeCount > 3000
-      ? "disabled"
-      : nodeCount > 600 || edgeCount > 1200
-        ? "lite"
-        : "full";
-
-  disableFancyUI = graphMode !== "full";
+    nodeCount > 1300 || edgeCount > 2500 ? "disabled" : "full";
 
   const focusedFunctionId = useMemo(() => {
     if (selectedNode && selectedNode.data?.raw?.type === "function") {
@@ -422,15 +425,71 @@ export default function FlowVisualizer({
     return t;
   }
 
-  const structuralGraph = useMemo(() => {
+  const selectedFile = selectedFileNode.fullPath || null;
+  const isFileView = graphScope === "file";
+
+  const scopedGraph = useMemo(() => {
     if (graphMode === "disabled") {
       return { nodes: [], edges: [] };
     }
-    if (!graphData?.nodes) return { nodes: [], edges: [] };
 
-    const execNodes = graphData.nodes
-      .filter((n: any) => n.type !== "file")
-      .map((n) => ({
+    if (!graphData?.nodes) {
+      return { nodes: [], edges: [] };
+    }
+
+    if (isFileView) {
+      const fileNodes = graphData.nodes.filter(
+        (n: any) => normalizePath(n.file) === normalizePath(selectedFile),
+      );
+
+      const nodeIds = new Set(fileNodes.map((n: any) => n.id));
+
+      const fileEdges = graphData.edges.filter(
+        (e: any) => nodeIds.has(e.from) && nodeIds.has(e.to),
+      );
+
+      return {
+        nodes: fileNodes.map((n: any) => ({
+          id: n.id,
+          type: "custom",
+          position: { x: 0, y: 0 },
+          data: { raw: n },
+          draggable: false,
+          sourcePosition: Position.Bottom,
+          targetPosition: Position.Top,
+        })),
+        edges: fileEdges.map((e: any) => ({
+          id: e.id,
+          source: e.from,
+          target: e.to,
+          label: e.label,
+          markerEnd: { type: MarkerType.ArrowClosed },
+        })),
+      };
+    }
+
+    const dependencyEdges = graphData.edges.filter(
+      (e) => e.label === "imports",
+    );
+
+    const connectedFileIds = new Set<string>();
+    dependencyEdges.forEach((e) => {
+      connectedFileIds.add(e.from);
+      connectedFileIds.add(e.to);
+    });
+
+    const structuralNodes = graphData.nodes.filter(
+      (n) => n.type === "file" && connectedFileIds.has(n.id),
+    );
+
+    const nodeIds = new Set(structuralNodes.map((n: any) => n.id));
+
+    const structuralEdges = graphData.edges.filter(
+      (e: any) => nodeIds.has(e.from) && nodeIds.has(e.to),
+    );
+
+    return {
+      nodes: structuralNodes.map((n: any) => ({
         id: n.id,
         type: "custom",
         position: { x: 0, y: 0 },
@@ -438,11 +497,8 @@ export default function FlowVisualizer({
         draggable: false,
         sourcePosition: Position.Bottom,
         targetPosition: Position.Top,
-      }));
-
-    return {
-      nodes: execNodes,
-      edges: graphData.edges.map((e: any) => ({
+      })),
+      edges: structuralEdges.map((e: any) => ({
         id: e.id,
         source: e.from,
         target: e.to,
@@ -450,27 +506,27 @@ export default function FlowVisualizer({
         markerEnd: { type: MarkerType.ArrowClosed },
       })),
     };
-  }, [graphData]);
+  }, [graphData, graphScope, selectedFile]);
 
   const layoutedGraph = useMemo(() => {
     if (graphMode !== "full") {
-      return structuralGraph;
+      return scopedGraph;
     }
-    if (!structuralGraph.nodes.length) return structuralGraph;
+    if (!scopedGraph.nodes.length) return scopedGraph;
 
-    const g = getDagreGraph(structuralGraph.nodes, structuralGraph.edges, "TB");
+    const g = getDagreGraph(scopedGraph.nodes, scopedGraph.edges, "TB");
 
     return {
-      nodes: structuralGraph.nodes.map((n) => {
+      nodes: scopedGraph.nodes.map((n) => {
         const p = g.node(n.id);
         return {
           ...n,
           position: { x: p.x - NODE_W / 2, y: p.y - NODE_H / 2 },
         };
       }),
-      edges: structuralGraph.edges,
+      edges: scopedGraph.edges,
     };
-  }, [structuralGraph]);
+  }, [scopedGraph]);
 
   const adjacency = useMemo(() => {
     const forward = new Map<string, string[]>();
@@ -519,6 +575,18 @@ export default function FlowVisualizer({
     return new Set([...Array.from(forwardSet), ...Array.from(backwardSet)]);
   }, [selectedNode, adjacency]);
 
+  const circularSet = new Set(
+    graphData?.meta?.intelligence?.circularDependencies?.flat() || [],
+  );
+
+  const maxFileImportance = useMemo(() => {
+    const values = graphData.nodes
+      .filter((n) => n.type === "file")
+      .map((n) => n.semantic?.importance ?? 0);
+
+    return values.length ? Math.max(...values) : 0;
+  }, [graphData]);
+
   const visualNodes = useMemo(() => {
     return layoutedGraph.nodes.map((n) => {
       const raw = n.data.raw;
@@ -536,21 +604,75 @@ export default function FlowVisualizer({
       const fadedByFunctionFocus =
         functionFocusedNodes && !functionFocusedNodes.has(n.id);
 
+      let label: string;
+      let color: string = colorBySemantic(raw);
+
+      if (graphScope == "global" && raw.type === "file") {
+        const name = raw.name?.split("/").pop() ?? "File";
+        label = `📄 File: ${name}`;
+
+        const importance = raw.importanceScore ?? 0;
+
+        if (importance > 5) {
+          color = "#ef4444";
+        } else if (importance > 2) {
+          color = "#f59e0b";
+        } else {
+          color = "#22c55e";
+        }
+      } else if (raw?.type === "root") {
+        label = "🔷 Execution Root";
+      } else if (raw?.type === "function") {
+        label = `🟢 Function: ${raw.name ?? "anonymous"}`;
+      } else {
+        label = (raw?.code ?? raw?.name ?? raw?.type ?? "")
+          .toString()
+          .slice(0, 60);
+      }
+
+      if (
+        graphScope === "global" &&
+        heatmapMode === "none" &&
+        raw.type === "file"
+      ) {
+        const imp = raw.importanceScore ?? 0;
+
+        const ratio = maxFileImportance > 0 ? imp / maxFileImportance : 0;
+
+        if (ratio > 0.75) {
+          color = "#ef4444";
+        } else if (ratio > 0.4) {
+          color = "#f59e0b";
+        } else if (ratio > 0.15) {
+          color = "#22c55e";
+        } else {
+          color = "#94a3b8";
+        }
+      }
+
+      const isDeadFile =
+        graphScope === "global" && raw.type === "file" && raw.deadCode;
+
+      const architectureDeadOpacity = isDeadFile ? 0.1 : 1;
+
+      const isInCycle =
+        graphScope === "global" &&
+        raw.type === "file" &&
+        circularSet.has(raw.id);
+
       return {
         ...n,
         data: {
           ...n.data,
-          label:
-            raw?.type === "function"
-              ? `🟢 Function: ${raw.name ?? "anonymous"}`
-              : (raw?.code ?? "").slice(0, 60),
-          color: colorBySemantic(raw),
-
+          label,
+          color,
+          border: isInCycle ? "3px solid #7c3aed" : "1px solid #ccc",
           fadedByFilter: !matchesFilter,
           fadedByHighlight: !isHighlighted,
           fadedByDead,
           fadedByFunctionFocus,
           focused: isFocused,
+          architectureDeadOpacity,
         },
       };
     });
@@ -609,9 +731,6 @@ export default function FlowVisualizer({
 
   const zoomToFit = () => rfInstanceRef.current?.fitView({ padding: 0.2 });
 
-  const lastPosRef = useRef<Record<string, { x: number; y: number }>>({});
-  const fitTimeoutRef = useRef<number | null>(null);
-
   useEffect(() => {
     if (explanation) {
       const el = document.getElementById("ai-explanation");
@@ -635,7 +754,7 @@ export default function FlowVisualizer({
       });
       const data = await res.json();
       console.log(data);
-      setExplanation(data || "No response");
+      // setExplanation(data || "No response");
     } catch (err: any) {
       setExplanation("⚠ Error while fetching explanation: " + err.message);
     } finally {
@@ -674,6 +793,17 @@ export default function FlowVisualizer({
 
   return (
     <div className="mb-6">
+      <div className="flex gap-2">
+        <select
+          value={graphScope}
+          onChange={(e) =>
+            setGraphScope(e.target.value === "global" ? "global" : "file")
+          }
+        >
+          <option value="file">File Level View</option>
+          <option value="global">Architecture View</option>
+        </select>
+      </div>
       <div
         className="flex items-center justify-between px-4 py-2 bg-gray-100 border border-gray-200 rounded-t-xl cursor-pointer select-none"
         onClick={() => setShowVisualizer((v) => !v)}

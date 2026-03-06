@@ -1,8 +1,8 @@
-export function injectFileDependencyEdges(
-  merged: { mergedNodes: any[]; mergedEdges: any[] },
-  fileTree: any[],
-) {
-  const { mergedNodes, mergedEdges } = merged;
+import { FlowGraph } from "./types";
+
+export function injectFileDependencyEdges(merged: FlowGraph, fileTree: any[]) {
+  const mergedNodes = merged.nodes;
+  const mergedEdges = merged.edges;
 
   const fileRootMap = new Map<string, string>();
   const existingEdgeIds = new Set<string>(mergedEdges.map((e) => e.id));
@@ -20,13 +20,10 @@ export function injectFileDependencyEdges(
         const fromId = fileRootMap.get(fromPath);
         if (!fromId) continue;
 
-        const imports = node.imports || [];
+        const imports = node.impact?.imports || [];
 
-        for (const imp of imports) {
-          const resolvedPath = resolveRelativeImport(fromPath, imp.name);
-          if (!resolvedPath) continue;
-
-          const toId = fileRootMap.get(resolvedPath);
+        for (const resolvedPath of imports) {
+          const toId = fileRootMap.get(normalizePath(resolvedPath));
           if (!toId) continue;
 
           const edgeId = `dep::${fromId}->${toId}`;
@@ -42,7 +39,6 @@ export function injectFileDependencyEdges(
           }
         }
 
-        // 🔹 Keep broken import support if exists
         const broken = node.impact?.brokenImports || [];
 
         for (const b of broken) {
@@ -78,7 +74,7 @@ export function injectFileDependencyEdges(
 
   collect(fileTree);
 
-  return { mergedNodes, mergedEdges };
+  return { nodes: mergedNodes, edges: mergedEdges };
 }
 
 export function injectApiNodes(
@@ -139,7 +135,12 @@ function resolveRelativeImport(
   fromFile: string,
   importPath: string,
 ): string | null {
-  if (!importPath.startsWith(".")) return null;
+  if (
+    !importPath ||
+    typeof importPath !== "string" ||
+    !importPath.startsWith(".")
+  )
+    return null;
 
   const path = require("path");
   const fs = require("fs");
