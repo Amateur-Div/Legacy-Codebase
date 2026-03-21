@@ -766,7 +766,7 @@ export default function FileViewerPanel({
               <CardContent className="space-y-4 text-sm">
                 <div>
                   <div className="font-medium text-gray-700 mb-1">Imports</div>
-                  {selectedFileNode.impact.imports.length ? (
+                  {selectedFileNode.impact?.imports?.length ? (
                     <ul className="ml-4 list-disc space-y-1 text-gray-600">
                       {selectedFileNode.impact.imports.map((imp: string) => (
                         <li
@@ -785,7 +785,7 @@ export default function FileViewerPanel({
 
                 <div>
                   <div className="font-medium text-gray-700 mb-1">Used By</div>
-                  {selectedFileNode.impact.usedBy.length ? (
+                  {selectedFileNode.impact?.usedBy.length ? (
                     <ul className="ml-4 list-disc space-y-1 text-gray-600">
                       {selectedFileNode.impact.usedBy.map((file: string) => (
                         <li
@@ -802,7 +802,7 @@ export default function FileViewerPanel({
                   )}
                 </div>
 
-                {selectedFileNode.impact.brokenImports?.length > 0 && (
+                {selectedFileNode.impact?.brokenImports?.length > 0 && (
                   <div className="rounded-xl border border-red-200 bg-red-50 p-3">
                     <div className="flex items-center gap-2 font-medium text-red-700 mb-1">
                       ⚠ Broken Imports

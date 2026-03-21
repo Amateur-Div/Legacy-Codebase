@@ -1,4 +1,5 @@
 "use client";
+
 import React, { useState, useEffect } from "react";
 import FlowVisualizer from "./FlowVisualizer";
 import { ReactFlowProvider } from "reactflow";
@@ -17,181 +18,120 @@ export default function ProjectAnalyzer({
   id: string;
   projectId: any;
   graphData: FlowGraph;
-  setGraphData: (graphData: {
-    nodes: any[];
-    edges: any[];
-    meta: {
-      nodeCount: number;
-      edgeCount: number;
-      mode: string | null;
-      generatedAt: Date;
-    };
-  }) => void;
+  setGraphData: (graphData: FlowGraph) => void;
   project: any;
   selectedFileNode: any;
 }) {
   const { jobId, setJobId } = useAuth();
-  const [status, setStatus] = useState<
-    "idle" | "uploading" | "running" | "done" | "error"
-  >("idle");
+
+  const [status, setStatus] = useState<"idle" | "running" | "done" | "error">(
+    "idle",
+  );
+
   const [progress, setProgress] = useState<number>(0);
   const [message, setMessage] = useState<string>("");
+
+  const fetchGraph = async () => {
+    try {
+      const token = await getAuth().currentUser?.getIdToken();
+      if (!token) return;
+
+      const res = await fetch(`/api/projects/${id}/graph`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) return;
+
+      const data = await res.json();
+      const graph = data.graphs?.[0]?.record;
+      setGraphData(graph);
+    } catch (err) {
+      console.error("Graph fetch failed", err);
+    }
+  };
+
   useEffect(() => {
-    if (!jobId || graphData.nodes.length > 0) {
+    fetchGraph();
+  }, [projectId]);
+
+  useEffect(() => {
+    if (graphData?.nodes?.length > 0) {
       setStatus("done");
       return;
     }
 
-    let evt: EventSource | null = null;
+    if (!jobId) {
+      return;
+    }
+
+    setStatus("running");
+
     let pollingTimer: number | null = null;
-    let sseConnected = false;
-    let abortedByClient = false;
-
-    const connectSSE = async () => {
-      const token = await getAuth().currentUser?.getIdToken();
-
-      if (!token) return;
-      const url = `/api/projects/${projectId}/jobs/${jobId}/events?token=${encodeURIComponent(token!)}`;
-
-      console.log("[SSE] connecting to", url);
-      try {
-        evt = new EventSource(url);
-
-        evt.onopen = () => {
-          console.log("[SSE] connected");
-          sseConnected = true;
-
-          if (pollingTimer) {
-            window.clearInterval(pollingTimer);
-            pollingTimer = null;
-          }
-        };
-
-        evt.onerror = (e: any) => {
-          console.error("[SSE] error", e);
-          if (evt) {
-            try {
-              evt.close();
-            } catch {}
-            evt = null;
-          }
-          if (!abortedByClient) startPolling();
-        };
-
-        evt.addEventListener("job:update", (e: MessageEvent) => {
-          console.log("Data :", e.data);
-          const data = JSON.parse(e.data);
-          console.log("[SSE] job:update", data);
-          setProgress(data.progress ?? 0);
-          setMessage(data.message ?? "Processing...");
-        });
-
-        evt.addEventListener("job:complete", async (e: MessageEvent) => {
-          const data = JSON.parse(e.data);
-
-          if (data?.result?.graph) {
-            setGraphData(data.graphs?.[0]?.record);
-          }
-
-          setProgress(100);
-          setMessage("Finalizing...");
-          setStatus("done");
-          setJobId(null);
-
-          if (evt) {
-            try {
-              evt.close();
-            } catch {}
-            evt = null;
-          }
-        });
-
-        evt.addEventListener("job:complete", async (e: MessageEvent) => {
-          const data = JSON.parse(e.data);
-
-          setProgress(100);
-          setMessage("Completed");
-          setStatus("done");
-          setJobId(null);
-        });
-
-        evt.addEventListener("ping", () => {
-          console.log("ping");
-        });
-      } catch (err) {
-        console.error("[SSE] exception while creating EventSource:", err);
-        startPolling();
-      }
-    };
 
     const fetchJobStatus = async () => {
       const token = await getAuth().currentUser?.getIdToken();
-      if (!token) {
-        return;
-      }
+      if (!token) return null;
 
       try {
         const res = await fetch(
-          `/api/projects/${projectId}/jobs/${jobId}?token=${encodeURIComponent(token!)}`,
+          `/api/projects/${projectId}/jobs/${jobId}?token=${encodeURIComponent(token)}`,
         );
+
         if (!res.ok) return null;
 
         const data = await res.json();
-        console.log("Data inside fetchJobStatus : ", data);
-
-        return await res.json();
+        return data;
       } catch (err) {
-        console.error("[poll] job status fetch error", err);
+        console.error("[poll] job status error", err);
         return null;
       }
     };
 
-    const startPolling = () => {
-      if (pollingTimer) return;
-      console.log("[poll] starting fallback polling every 2000ms");
-      pollingTimer = window.setInterval(async () => {
+    pollingTimer = window.setInterval(async () => {
+      try {
+        await fetch("/api/worker/process", { method: "POST" });
+
         const job = await fetchJobStatus();
         if (!job) return;
-        console.log("[poll] job", job.status, job.progress);
+
         setProgress(job.progress ?? 0);
         setMessage(job.message ?? "Processing...");
-        if (job.status === "done") {
-          if (job.result?.graph) {
-            setGraphData(job.result.graph);
-          }
-          if (pollingTimer) {
-            window.clearInterval(pollingTimer);
-            pollingTimer = null;
-          }
-        } else if (job.status === "error" || job.status === "cancelled") {
-          if (pollingTimer) {
-            window.clearInterval(pollingTimer);
-            pollingTimer = null;
-          }
-          setStatus("error");
-          setMessage("Analysis failed");
-        }
-      }, 2000);
-    };
 
-    setTimeout(() => connectSSE(), 300);
+        if (job.status === "done") {
+          setStatus("done");
+          setJobId(null);
+
+          await fetchGraph();
+
+          if (pollingTimer) {
+            window.clearInterval(pollingTimer);
+            pollingTimer = null;
+          }
+        }
+
+        if (job.status === "error") {
+          setStatus("error");
+
+          if (pollingTimer) {
+            window.clearInterval(pollingTimer);
+            pollingTimer = null;
+          }
+        }
+      } catch (err) {
+        console.error("Worker polling error", err);
+      }
+    }, 2000);
 
     return () => {
-      abortedByClient = true;
-      if (evt) {
-        try {
-          evt.close();
-        } catch {}
-        evt = null;
-      }
       if (pollingTimer) {
         window.clearInterval(pollingTimer);
-        pollingTimer = null;
       }
     };
-  }, [jobId, projectId]);
+  }, [jobId, projectId, graphData]);
 
-  if (status === "uploading" || status === "running") {
+  if (status === "running") {
     return (
       <div className="flex flex-col items-center mt-20">
         <p className="text-lg font-medium mb-3">{message}</p>
@@ -206,7 +146,8 @@ export default function ProjectAnalyzer({
     );
   }
 
-  if (status === "done" && graphData) {
+  if (status === "done" && graphData?.nodes?.length > 0) {
+    console.log("Flow Visualizer rendered ...");
     return (
       <ReactFlowProvider>
         <FlowVisualizer

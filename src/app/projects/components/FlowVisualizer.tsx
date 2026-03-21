@@ -754,7 +754,7 @@ export default function FlowVisualizer({
       });
       const data = await res.json();
       console.log(data);
-      // setExplanation(data || "No response");
+      setExplanation(data?.explanation || "No response");
     } catch (err: any) {
       setExplanation("⚠ Error while fetching explanation: " + err.message);
     } finally {

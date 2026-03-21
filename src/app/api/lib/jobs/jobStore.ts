@@ -3,10 +3,13 @@ import clientPromise from "@/lib/mongoClient";
 
 const COLLECTION = "jobs";
 
-export async function saveJob(job: Job) {
+export async function saveJob(job: Partial<Job> & { id: string }) {
   const db = (await clientPromise).db();
-  const collection = db.collection(COLLECTION);
-  await collection.updateOne({ id: job.id }, { $set: job }, { upsert: true });
+  const collection = db.collection("jobs");
+
+  const { id, ...updates } = job;
+
+  await collection.updateOne({ id }, { $set: updates }, { upsert: true });
 }
 
 export async function loadJob(jobId: string): Promise<Job | null> {
@@ -14,6 +17,33 @@ export async function loadJob(jobId: string): Promise<Job | null> {
   const collection = db.collection(COLLECTION);
   const job = await collection.findOne({ id: jobId });
   return job as Job | null;
+}
+
+export async function findAndLockJob(): Promise<Job | null> {
+  const db = (await clientPromise).db();
+  const collection = db.collection<Job>("jobs");
+
+  const job = await collection.findOneAndUpdate(
+    {
+      status: { $in: ["queued", "running"] },
+      locked: { $ne: true },
+    },
+    {
+      $set: { locked: true },
+    },
+    {
+      returnDocument: "after",
+    },
+  );
+
+  return job;
+}
+
+export async function unlockJob(jobId: string) {
+  const db = (await clientPromise).db();
+  const collection = db.collection("jobs");
+
+  await collection.updateOne({ id: jobId }, { $set: { locked: false } });
 }
 
 export async function loadJobForOwner(

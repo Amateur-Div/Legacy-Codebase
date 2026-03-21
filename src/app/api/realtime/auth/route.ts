@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   if (!socket_id || !channel_name) {
     return NextResponse.json(
       { error: "Invalid auth payload" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
   const authResponse = pusher.authorizeChannel(
     socket_id,
     channel_name,
-    channelData
+    channelData,
   );
 
   return NextResponse.json(authResponse);

@@ -13,8 +13,8 @@ import * as babelParser from "@babel/parser";
 import { detectLanguage, getLanguageColor } from "../lib/language";
 import { extractStructureBabel } from "../lib/extractStructureBable";
 import { instrumentExecutionBabel } from "../lib/instrumentExecutionBabel";
-import { attachCrossFileImpact } from "../lib/buildCrossFileImpactMap";
-import { enqueueJob } from "../lib/jobs/jobManager";
+import { createJob } from "../lib/jobs/jobManager";
+import { uploadZipToGridFS } from "../lib/gridfs";
 
 const IGNORE_DIRS = new Set([
   "node_modules",
@@ -211,8 +211,8 @@ async function buildFileTree(files: string[], rootDir: string) {
               }
             }
           } catch (err: any) {
-            console.warn("Failed to read file:", fullPath);
             console.log("Error reading files : ", err);
+            console.warn("Failed to read file:", fullPath);
           }
         }
 
@@ -267,9 +267,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid ZIP file" }, { status: 400 });
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-
     const projectId = uuid();
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const gridFsId = await uploadZipToGridFS(projectId, buffer);
+
     extractPath = path.join(os.tmpdir(), projectId);
     const extractRoot = path.join(extractPath, "repo");
     fs.mkdirSync(extractRoot, { recursive: true });
@@ -368,8 +370,7 @@ export async function POST(req: NextRequest) {
 
     console.log("Stored JS/TS bytes:", totalStoredBytes);
 
-    attachCrossFileImpact(fileTree);
-    const job = await enqueueJob(projectId, fileTree, fileDocs, uid);
+    const job = await createJob(projectId, uid, fileDocs.length);
 
     const entryPoints: string[] = [];
     const walkTree = (nodes: any[]) =>
@@ -398,6 +399,7 @@ export async function POST(req: NextRequest) {
       packageInfo,
       entryPoints,
       tags,
+      uploadZipId: gridFsId,
     });
 
     if (fileDocs.length) {
@@ -420,3 +422,54 @@ export async function POST(req: NextRequest) {
     }
   }
 }
+
+// export async function POST(req: NextRequest) {
+//   try {
+//     const authHeader = req.headers.get("Authorization") || "";
+//     const token = authHeader.replace("Bearer ", "");
+//     const { uid } = await authMiddleware(token);
+
+//     const formData = await req.formData();
+//     const file = formData.get("file") as File;
+
+//     if (!file) {
+//       return NextResponse.json({ error: "Invalid ZIP file" }, { status: 400 });
+//     }
+
+//     const projectId = uuid();
+//     const buffer = Buffer.from(await file.arrayBuffer());
+
+//     const gridFsId = await uploadZipToGridFS(projectId, buffer);
+
+//     const job = await createJob(projectId, uid, 0);
+
+//     const mongoClient = await clientPromise;
+//     const db = mongoClient.db();
+
+//     await db.collection("projects").insertOne({
+//       ownerId: uid,
+//       members: [uid],
+//       roles: { [uid]: "owner" },
+//       pendingInvites: [],
+//       projectName: file.name.replace(/\.zip$/, ""),
+//       createdAt: new Date(),
+//       projectId,
+//       uploadZipId: gridFsId,
+//       fileTree: [],
+//       packageInfo: null,
+//       entryPoints: [],
+//       tags: [],
+//     });
+
+//     return NextResponse.json({
+//       message: "Upload successful",
+//       jobId: job.id,
+//     });
+//   } catch (err) {
+//     console.error("[UPLOAD_ERROR]", err);
+//     return NextResponse.json(
+//       { error: "Something went wrong" },
+//       { status: 500 },
+//     );
+//   }
+// }
