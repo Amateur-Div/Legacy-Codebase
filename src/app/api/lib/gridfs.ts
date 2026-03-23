@@ -21,7 +21,7 @@ export async function getGridFSBucket() {
 export async function uploadZipToGridFS(
   projectId: string,
   buffer: Buffer,
-): Promise<string> {
+): Promise<ObjectId> {
   const bucket = await getGridFSBucket();
 
   const uploadStream = bucket.openUploadStream(`${projectId}.zip`, {
@@ -32,17 +32,17 @@ export async function uploadZipToGridFS(
 
   return new Promise((resolve, reject) => {
     uploadStream.on("finish", () => {
-      resolve(uploadStream.id.toString());
+      resolve(uploadStream.id as ObjectId);
     });
 
     uploadStream.on("error", reject);
   });
 }
 
-export async function downloadZipToPath(fileId: string, destPath: string) {
+export async function downloadZipToPath(fileId: ObjectId, destPath: string) {
   const bucket = await getGridFSBucket();
 
-  const stream = bucket.openDownloadStream(new ObjectId(fileId));
+  const stream = bucket.openDownloadStream(fileId);
 
   return new Promise<void>((resolve, reject) => {
     const write = fs.createWriteStream(destPath);

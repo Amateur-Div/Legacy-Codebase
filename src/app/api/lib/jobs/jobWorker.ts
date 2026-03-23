@@ -317,7 +317,15 @@ export async function runJobStep(job: any) {
     }
 
     if (docs.length) {
-      await db.collection("project_files").insertMany(docs, { ordered: false });
+      for (const doc of docs) {
+        await db
+          .collection("project_files")
+          .updateOne(
+            { projectId: doc.projectId, path: doc.path },
+            { $set: doc },
+            { upsert: true },
+          );
+      }
     }
 
     const newCursor = job.cursor + slice.length;
