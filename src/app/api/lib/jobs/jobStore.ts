@@ -1,5 +1,5 @@
 import type { Job } from "./jobManager";
-import clientPromise from "@/lib/mongoClient";
+import clientPromise from "../../../../lib/mongoClient";
 
 const COLLECTION = "jobs";
 
@@ -16,34 +16,7 @@ export async function loadJob(jobId: string): Promise<Job | null> {
   const db = (await clientPromise).db();
   const collection = db.collection(COLLECTION);
   const job = await collection.findOne({ id: jobId });
-  return job as Job | null;
-}
-
-export async function findAndLockJob(): Promise<Job | null> {
-  const db = (await clientPromise).db();
-  const collection = db.collection<Job>("jobs");
-
-  const job = await collection.findOneAndUpdate(
-    {
-      status: { $in: ["queued", "running"] },
-      locked: { $ne: true },
-    },
-    {
-      $set: { locked: true },
-    },
-    {
-      returnDocument: "after",
-    },
-  );
-
-  return job;
-}
-
-export async function unlockJob(jobId: string) {
-  const db = (await clientPromise).db();
-  const collection = db.collection("jobs");
-
-  await collection.updateOne({ id: jobId }, { $set: { locked: false } });
+  return job as unknown as Job | null;
 }
 
 export async function loadJobForOwner(
@@ -53,7 +26,7 @@ export async function loadJobForOwner(
   const db = (await clientPromise).db();
   const collection = db.collection(COLLECTION);
   const job = await collection.findOne({ id: jobId, ownerId });
-  return job as Job | null;
+  return job as unknown as Job | null;
 }
 
 export async function listJobs(projectId: string, ownerId?: string) {

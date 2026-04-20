@@ -28,10 +28,12 @@
     "@radix-ui/react-tooltip": "^1.2.7",
     "@tailwindcss/typography": "^0.5.16",
     "@types/react-syntax-highlighter": "^15.5.13",
+    "@uploadthing/react": "^7.3.3",
     "adm-zip": "^0.5.16",
     "axios": "^1.9.0",
     "browser-image-compression": "^2.0.2",
     "bson": "^6.10.4",
+    "bullmq": "^5.71.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cors": "^2.8.5",
@@ -42,6 +44,7 @@
     "firebase-admin": "^13.4.0",
     "framer-motion": "^12.15.0",
     "glob": "^11.0.3",
+    "ioredis": "^5.10.1",
     "lucide-react": "^0.511.0",
     "mongodb": "^6.17.0",
     "mongoose": "^8.15.1",
@@ -61,10 +64,12 @@
     "react-tooltip": "^5.30.0",
     "reactflow": "^11.11.4",
     "recast": "^0.23.11",
+    "redis-server": "^1.2.2",
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.3.0",
     "tailwindcss-animate": "^1.0.7",
+    "uploadthing": "^7.7.4",
     "uuid": "^11.1.0",
     "zod": "^3.25.28"
   },
@@ -83,9 +88,11 @@
     "autoprefixer": "^10.4.21",
     "eslint": "^9",
     "eslint-config-next": "15.1.8",
+    "install": "^0.13.0",
     "postcss": "^8.5.3",
     "sonner": "^2.0.4",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5"
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
   }
 }

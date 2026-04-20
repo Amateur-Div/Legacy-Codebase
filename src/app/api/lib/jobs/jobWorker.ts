@@ -1,200 +1,8 @@
-// import clientPromise from "@/lib/mongoClient";
-// import { enrichGraphSemantics } from "../analyzer/enrichGraphSemantics";
-// import { injectFileDependencyEdges } from "../analyzer/injectFileDependencyEdges";
-// import { mergeFileGraphs } from "../analyzer/mergeFileGraph";
-// import { instrumentExecutionBabel } from "../instrumentExecutionBabel";
-// import { getCodeFiles } from "../projectFileStore";
-// import { saveJob } from "./jobStore";
-// import { saveGraph } from "../graph/graphStore";
-// import { styleGraphEdges } from "../analyzer/styleGraphEdges";
-// import {
-//   computeFileImportance,
-//   findCircularDependencies,
-//   findDeadFiles,
-// } from "../impactEngine";
-// import { attachCrossFileImpact } from "../buildCrossFileImpactMap";
-// import { extractProjectZip } from "../jobZipExtractor";
-
-// import fs from "fs";
-// import path from "path";
-
-// const CHUNK_SIZE = 10;
-
-// export async function runJobStep(job: any) {
-//   if (job.status === "done") return;
-
-//   if (!job.extractedPath) {
-//     const root = await extractProjectZip(job.projectId, job.ownerId);
-
-//     const partialDir = path.join(root, "partialGraphs");
-//     fs.mkdirSync(partialDir, { recursive: true });
-
-//     await saveJob({
-//       id: job.id,
-//       extractedPath: root,
-//     });
-
-//     return;
-//   }
-
-//   if (job.step === "queued") {
-//     await saveJob({
-//       id: job.id,
-//       status: "running",
-//       step: "file-analysis",
-//       progress: 1,
-//       message: "Starting analysis",
-//     });
-//     return;
-//   }
-
-//   if (job.step === "file-analysis") {
-//     const files = await getCodeFiles(job.projectId);
-
-//     const slice = files.slice(job.cursor, job.cursor + CHUNK_SIZE);
-//     const partialDir = path.join(job.extractedPath, "partialGraphs");
-
-//     for (const file of slice) {
-//       let graph;
-//       try {
-//         graph = await instrumentExecutionBabel(file.content || "");
-//       } catch {
-//         graph = { nodes: [], edges: [] };
-//       }
-
-//       const fileIndex = job.cursor;
-//       fs.writeFileSync(
-//         path.join(partialDir, `${fileIndex}.json`),
-//         JSON.stringify({ file: file.path, graph }),
-//       );
-
-//       job.cursor++;
-//     }
-
-//     const progress = Math.round((job.cursor / files.length) * 60);
-
-//     await saveJob({
-//       id: job.id,
-//       cursor: job.cursor,
-//       progress,
-//       message: `Analyzed ${job.cursor}/${files.length} files`,
-//       step: job.cursor >= files.length ? "merge" : "file-analysis",
-//     });
-
-//     return;
-//   }
-
-//   if (job.step === "merge") {
-//     const partialDir = path.join(job.extractedPath, "partialGraphs");
-
-//     const files = fs.readdirSync(partialDir);
-//     const graphs = files.map((f) =>
-//       JSON.parse(fs.readFileSync(path.join(partialDir, f), "utf-8")),
-//     );
-
-//     const merged = mergeFileGraphs(graphs);
-
-//     fs.writeFileSync(
-//       path.join(job.extractedPath, "merged.json"),
-//       JSON.stringify(merged),
-//     );
-
-//     await saveJob({
-//       id: job.id,
-//       step: "enrich",
-//       progress: 70,
-//       message: "Merged graphs",
-//     });
-
-//     return;
-//   }
-
-//   if (job.step === "enrich") {
-//     const merged = JSON.parse(
-//       fs.readFileSync(path.join(job.extractedPath, "merged.json"), "utf-8"),
-//     );
-
-//     const client = await clientPromise;
-//     const db = client.db();
-
-//     const project = await db
-//       .collection("projects")
-//       .findOne({ projectId: job.projectId, members: job.ownerId });
-
-//     const fileTree = project!.fileTree;
-
-//     attachCrossFileImpact(fileTree);
-
-//     const withDeps = injectFileDependencyEdges(merged, fileTree);
-//     const enriched = enrichGraphSemantics(withDeps);
-
-//     const styled = {
-//       ...enriched,
-//       edges: styleGraphEdges(enriched.edges),
-//     };
-
-//     const deadFiles = findDeadFiles(styled);
-//     const circularDeps = findCircularDependencies(styled);
-//     const importanceRanking = computeFileImportance(styled).slice(0, 20);
-
-//     const finalGraph = {
-//       ...styled,
-//       meta: {
-//         nodeCount: styled.nodes.length,
-//         edgeCount: styled.edges.length,
-//         mode: "execution",
-//         intelligence: {
-//           deadFiles,
-//           circularDependencies: circularDeps,
-//           importanceRanking,
-//         },
-//         generatedAt: new Date(),
-//       },
-//     };
-
-//     fs.writeFileSync(
-//       path.join(job.extractedPath, "final.json"),
-//       JSON.stringify(finalGraph),
-//     );
-
-//     await saveJob({
-//       id: job.id,
-//       step: "save",
-//       progress: 90,
-//       message: "Enriched graph",
-//     });
-
-//     return;
-//   }
-
-//   if (job.step === "save") {
-//     const finalGraph = JSON.parse(
-//       fs.readFileSync(path.join(job.extractedPath, "final.json"), "utf-8"),
-//     );
-
-//     await saveGraph(job.projectId, finalGraph, job.ownerId);
-
-//     fs.rmSync(job.extractedPath, { recursive: true, force: true });
-
-//     await saveJob({
-//       id: job.id,
-//       status: "done",
-//       step: "done",
-//       progress: 100,
-//       message: "Completed",
-//     });
-
-//     return;
-//   }
-// }
-
 import fs from "fs";
 import path from "path";
-import os from "os";
 import AdmZip from "adm-zip";
-import clientPromise from "@/lib/mongoClient";
+import clientPromise from "../../../../lib/mongoClient";
 import { saveJob } from "./jobStore";
-import { downloadZipToPath } from "../gridfs";
 import { instrumentExecutionBabel } from "../instrumentExecutionBabel";
 import { mergeFileGraphs } from "../analyzer/mergeFileGraph";
 import { attachCrossFileImpact } from "../buildCrossFileImpactMap";
@@ -208,8 +16,15 @@ import {
 } from "../impactEngine";
 import { detectLanguage } from "../language";
 import { saveGraph } from "../graph/graphStore";
+import { buildFileTree, detectTags } from "../uploadHelpers";
+import {
+  cleanOldCache,
+  ensureCacheRoot,
+  getProjectCachePath,
+  touchCache,
+} from "../cache/extractCache";
 
-const CHUNK_SIZE = 10;
+const CHUNK_SIZE = 20;
 
 function isBinaryFile(buffer: Buffer) {
   return buffer.includes(0);
@@ -249,6 +64,15 @@ function walkDir(root: string): string[] {
   return results;
 }
 
+function withTimeout(promise: any, ms = 5000) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Timeout")), ms),
+    ),
+  ]);
+}
+
 export async function runJobStep(job: any) {
   if (job.status === "done") return;
 
@@ -259,141 +83,300 @@ export async function runJobStep(job: any) {
       .collection("projects")
       .findOne({ projectId: job.projectId });
 
-    const root = path.join(os.tmpdir(), job.projectId);
+    ensureCacheRoot();
+
+    const root = getProjectCachePath(job.projectId);
+
+    fs.mkdirSync(root, { recursive: true });
+
     const extractRoot = path.join(root, "repo");
+
+    touchCache(job.projectId);
 
     fs.mkdirSync(extractRoot, { recursive: true });
 
-    const zipPath = path.join(root, "repo.zip");
-    await downloadZipToPath(project?.uploadZipId, zipPath);
+    const zipPath = project?.uploadPath;
+
+    let lastSize = -1;
+    let stableCount = 0;
+
+    for (let i = 0; i < 60; i++) {
+      if (zipPath && fs.existsSync(zipPath)) {
+        const size = fs.statSync(zipPath).size;
+
+        if (size === lastSize) {
+          stableCount++;
+
+          if (stableCount >= 3) break;
+        } else {
+          stableCount = 0;
+          lastSize = size;
+        }
+      }
+
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
+    if (!zipPath || !fs.existsSync(zipPath)) {
+      throw new Error("zip not ready");
+    }
+
     new AdmZip(zipPath).extractAllTo(extractRoot, true);
 
+    cleanOldCache();
     fs.mkdirSync(path.join(root, "partialGraphs"), { recursive: true });
-
-    const totalFiles = walkDir(extractRoot).length;
 
     await saveJob({
       id: job.id,
       extractedPath: root,
-      step: "ingestion",
+      step: "scan",
       status: "running",
-      cursor: 0,
-      totalFiles,
-      progress: 1,
+      progress: 2,
       message: "Repository extracted",
     });
 
     return;
   }
 
-  if (job.step === "ingestion") {
+  if (job.step === "scan") {
     const root = path.join(job.extractedPath, "repo");
-    const allFiles = walkDir(root);
 
-    const BATCH = 40;
-    const slice = allFiles.slice(job.cursor, job.cursor + BATCH);
+    if (!job.scanFiles) {
+      const scanFiles = walkDir(root);
 
-    const docs = [];
-
-    for (const abs of slice) {
-      const stat = fs.statSync(abs);
-      if (!stat.isFile()) continue;
-
-      let content;
-      if (stat.size < 1024 * 1024) {
-        const buf = fs.readFileSync(abs);
-        if (!isBinaryFile(buf)) content = buf.toString("utf-8");
-      }
-
-      docs.push({
-        projectId: job.projectId,
-        path: path.relative(root, abs).split(path.sep).join("/"),
-        size: stat.size,
-        language: detectLanguage(abs),
-        isCode: /\.(js|ts|jsx|tsx)$/.test(abs),
-        content,
-        createdAt: new Date(),
+      await saveJob({
+        id: job.id,
+        scanFiles,
+        scanCursor: 0,
+        totalFiles: scanFiles.length,
+        progress: 5,
+        message: "Scanning repository",
       });
-    }
 
-    if (docs.length) {
-      for (const doc of docs) {
-        await db
-          .collection("project_files")
-          .updateOne(
-            { projectId: doc.projectId, path: doc.path },
-            { $set: doc },
-            { upsert: true },
-          );
-      }
+      return;
     }
-
-    const newCursor = job.cursor + slice.length;
 
     await saveJob({
       id: job.id,
-      cursor: newCursor,
-      progress: Math.round((newCursor / job.totalFiles) * 20),
-      step: newCursor >= job.totalFiles ? "file-analysis" : "ingestion",
-      message: `Ingested ${newCursor}/${job.totalFiles}`,
+      step: "metadata",
+      progress: 8,
+      message: "Scan complete",
+    });
+
+    return;
+  }
+
+  if (job.step === "metadata") {
+    const root = path.join(job.extractedPath, "repo");
+
+    const allFiles = job.scanFiles.map((abs: string) =>
+      path.relative(root, abs).split(path.sep).join("/"),
+    );
+
+    const fileTree = await buildFileTree(allFiles, root);
+
+    let packageInfo = null;
+
+    const pkgPath = allFiles.find((f: string) => f.endsWith("package.json"));
+
+    if (pkgPath) {
+      try {
+        const abs = path.join(root, pkgPath);
+        const parsed = JSON.parse(fs.readFileSync(abs, "utf-8"));
+
+        packageInfo = {
+          name: parsed.name,
+          version: parsed.version,
+          scripts: parsed.scripts || {},
+          dependencies: parsed.dependencies || {},
+          devDependencies: parsed.devDependencies || {},
+        };
+      } catch {}
+    }
+
+    const entryPoints: string[] = [];
+
+    const walkTree = (nodes: any[]) => {
+      for (const n of nodes) {
+        if (n.type === "file" && n.entry) {
+          entryPoints.push(n.fullPath);
+        }
+        if (n.children) walkTree(n.children);
+      }
+    };
+
+    walkTree(fileTree);
+
+    const tags = detectTags(packageInfo, fileTree);
+
+    await db.collection("projects").updateOne(
+      { projectId: job.projectId },
+      {
+        $set: {
+          fileTree,
+          packageInfo,
+          entryPoints,
+          tags,
+        },
+      },
+    );
+
+    await saveJob({
+      id: job.id,
+      step: "file-analysis",
+      cursor: 0,
+      progress: 12,
+      message: "Metadata extracted",
     });
 
     return;
   }
 
   if (job.step === "file-analysis") {
-    const files = await db
-      .collection("project_files")
-      .find({ projectId: job.projectId, isCode: true })
-      .project({ path: 1 })
-      .toArray();
+    const cursor = job.cursor ?? 0;
 
-    const paths = files.map((f) => f.path);
+    const files = job.scanFiles || [];
 
-    const slice = paths.slice(job.cursor, job.cursor + CHUNK_SIZE);
+    const slice = files.slice(cursor, cursor + CHUNK_SIZE);
     const partialDir = path.join(job.extractedPath, "partialGraphs");
 
-    for (const p of slice) {
-      const doc = await db
-        .collection("project_files")
-        .findOne({ projectId: job.projectId, path: p });
+    const MAX_DB_FILE_SIZE = 100 * 1024;
 
-      let graph;
+    const PARALLEL = 5;
 
-      try {
-        graph = await instrumentExecutionBabel(doc?.content || "");
-      } catch {}
+    for (let i = 0; i < slice.length; i += PARALLEL) {
+      const batch = slice.slice(i, i + PARALLEL);
 
-      fs.writeFileSync(
-        path.join(partialDir, `${job.cursor}.json`),
-        JSON.stringify({ file: p, graph }),
+      const results = await Promise.all(
+        batch.map(async (absPath: any, idx: any) => {
+          const index = cursor + i + idx;
+
+          const outputPath = path.join(partialDir, `${index}.json`);
+
+          if (fs.existsSync(outputPath)) return null;
+
+          const relPath = path
+            .relative(path.join(job.extractedPath, "repo"), absPath)
+            .split(path.sep)
+            .join("/");
+
+          let content = "";
+
+          try {
+            const buf = fs.readFileSync(absPath);
+            if (!isBinaryFile(buf)) {
+              content = buf.toString("utf-8");
+            }
+          } catch {}
+
+          let stat;
+          try {
+            stat = fs.statSync(absPath);
+          } catch {
+            return null;
+          }
+
+          let graph: any = { nodes: [], edges: [] };
+
+          try {
+            if (/\.(js|ts|jsx|tsx)$/.test(absPath)) {
+              const result = await withTimeout(
+                instrumentExecutionBabel(content),
+                5000,
+              );
+
+              if (result?.nodes && result?.edges) {
+                graph = result;
+              }
+            }
+          } catch {}
+
+          try {
+            fs.writeFileSync(
+              outputPath,
+              JSON.stringify({ file: relPath, graph }),
+            );
+          } catch {}
+
+          return {
+            relPath,
+            stat,
+            content,
+            absPath,
+          };
+        }),
       );
 
-      job.cursor++;
+      const docs = results.filter(Boolean).map((r: any) => ({
+        updateOne: {
+          filter: {
+            projectId: job.projectId,
+            path: r.relPath,
+          },
+          update: {
+            $set: {
+              projectId: job.projectId,
+              path: r.relPath,
+              size: r.stat.size,
+              language: detectLanguage(r.relPath),
+              isCode: /\.(js|ts|jsx|tsx)$/.test(r.absPath),
+              content: r.stat.size <= MAX_DB_FILE_SIZE ? r.content : undefined,
+            },
+          },
+          upsert: true,
+        },
+      }));
+
+      if (docs.length) {
+        await db.collection("project_files").bulkWrite(docs);
+      }
     }
 
-    const total = paths.length;
+    const newCursor = Math.min(cursor + CHUNK_SIZE, files.length);
+
+    const total = files.length;
+    const progress = Math.round((newCursor / total) * 60);
 
     await saveJob({
       id: job.id,
-      cursor: job.cursor,
-      progress: 20 + Math.round((job.cursor / total) * 40),
-      step: job.cursor >= total ? "merge" : "file-analysis",
-      message: `Analyzed ${job.cursor}/${total}`,
+      cursor: newCursor,
+      progress,
+      step: newCursor >= total ? "merge" : "file-analysis",
+      message: `Analyzed ${newCursor}/${total}`,
     });
 
     return;
   }
 
   if (job.step === "merge") {
+    const mergedPath = path.join(job.extractedPath, "merged.json");
+
+    if (fs.existsSync(mergedPath)) {
+      await saveJob({
+        ...job,
+        step: "enrich",
+        progress: 70,
+        message: "Merged graphs (cached)",
+      });
+      return;
+    }
+
     const partialDir = path.join(job.extractedPath, "partialGraphs");
 
-    const files = fs.readdirSync(partialDir);
-    const graphs = files.map((f) =>
-      JSON.parse(fs.readFileSync(path.join(partialDir, f), "utf-8")),
-    );
+    const files = fs
+      .readdirSync(partialDir)
+      .sort((a, b) => Number(a.split(".")[0]) - Number(b.split(".")[0]));
+    const fileGraphs = files
+      .map((f) => {
+        try {
+          return JSON.parse(fs.readFileSync(path.join(partialDir, f), "utf-8"));
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
 
-    const merged = mergeFileGraphs(graphs);
+    const merged = mergeFileGraphs(fileGraphs);
 
     fs.writeFileSync(
       path.join(job.extractedPath, "merged.json"),
@@ -473,9 +456,24 @@ export async function runJobStep(job: any) {
       fs.readFileSync(path.join(job.extractedPath, "final.json"), "utf-8"),
     );
 
+    const existing = await db
+      .collection("graphs")
+      .findOne({ projectId: job.projectId });
+
+    if (existing) {
+      await saveJob({
+        ...job,
+        status: "done",
+        step: "done",
+        progress: 100,
+        message: "Already processed",
+      });
+      return;
+    }
+
     await saveGraph(job.projectId, finalGraph, job.ownerId);
 
-    fs.rmSync(job.extractedPath, { recursive: true, force: true });
+    // fs.rmSync(job.extractedPath, { recursive: true, force: true });
 
     await saveJob({
       ...job,
@@ -484,6 +482,15 @@ export async function runJobStep(job: any) {
       progress: 100,
       message: "Completed",
     });
+
+    db.collection("projects").updateOne(
+      { projectId: job.projectId },
+      {
+        $set: {
+          analysisComplete: true,
+        },
+      },
+    );
 
     return;
   }

@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
       impactMap: project.impactMap,
       stats: project.stats ?? null,
       tags: project.tags ?? [],
+      analysisComplete: project.analysisComplete,
       project,
     });
   } catch (err) {
@@ -108,7 +109,7 @@ export async function PATCH(req: NextRequest) {
       .collection("projects")
       .updateOne(
         { _id: new ObjectId(id), ownerId: uid },
-        { $set: updateFields }
+        { $set: updateFields },
       );
 
     if (result.matchedCount === 0) {

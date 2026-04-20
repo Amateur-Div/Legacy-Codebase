@@ -1,4 +1,4 @@
-import clientPromise from "@/lib/mongoClient";
+import clientPromise from "../../../../lib/mongoClient";
 
 const COLLECTION = "graphs";
 
@@ -14,7 +14,7 @@ export async function saveGraph(
       generatedAt: Date;
     };
   },
-  ownerId?: string
+  ownerId?: string,
 ) {
   const client = await clientPromise;
   const db = client.db();

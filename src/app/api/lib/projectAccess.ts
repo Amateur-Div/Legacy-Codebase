@@ -1,4 +1,4 @@
-import clientPromise from "@/lib/mongoClient";
+import clientPromise from "../../../lib/mongoClient";
 import { ObjectId } from "bson";
 
 export type Role = "owner" | "editor" | "viewer";
@@ -6,7 +6,7 @@ export type Role = "owner" | "editor" | "viewer";
 export async function assertProjectAccess(
   projectId: string,
   uid: string,
-  requiredRole?: Role
+  requiredRole?: Role,
 ) {
   const db = (await clientPromise).db();
   const col = db.collection("projects");
@@ -37,7 +37,7 @@ export async function assertProjectAccess(
       "Role rank : ",
       rank[role!],
       " Required role rank : ",
-      rank[requiredRole]
+      rank[requiredRole],
     );
 
     if (!role || rank[role] < rank[requiredRole]) {

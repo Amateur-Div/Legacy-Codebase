@@ -1,32 +1,26 @@
 "use client";
 
-import React, {
-  createContext,
-  ReactNode,
-  useContext,
-  useEffect,
-  useState,
-} from "react";
+import React, { createContext, ReactNode, useContext, useState } from "react";
 
 interface ProjectContextProps {
-  ProjectName: string;
+  project: any;
+  setProject: (project: any) => void;
 }
 
 const ProjectContext = createContext<ProjectContextProps>({
-  ProjectName: "",
+  project: null,
+  setProject() {
+    return null;
+  },
 });
 
 export const useProject = () => useContext(ProjectContext);
 
 export const ProjectProvider = ({ children }: { children: ReactNode }) => {
-  const [ProjectName, setProjectName] = useState("");
-
-  useEffect(() => {
-    setProjectName("My project!...");
-  }, []);
+  const [project, setProject] = useState<any>(null);
 
   return (
-    <ProjectContext.Provider value={{ ProjectName }}>
+    <ProjectContext.Provider value={{ project, setProject }}>
       {children}
     </ProjectContext.Provider>
   );

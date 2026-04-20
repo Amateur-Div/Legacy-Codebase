@@ -20,7 +20,7 @@ const IGNORE_DIRS = new Set([
   ".cache",
 ]);
 
-function extractHighlights(code: string) {
+export function extractHighlights(code: string) {
   const ast = babelParser.parse(code, {
     sourceType: "unambiguous",
     plugins: ["jsx", "typescript", "decorators-legacy"],
@@ -43,11 +43,11 @@ function extractHighlights(code: string) {
   return { todos, fixmes, notes };
 }
 
-function isBinaryFile(buffer: Buffer) {
+export function isBinaryFile(buffer: Buffer) {
   return buffer.includes(0);
 }
 
-function isEntryFile(name: string, content: string): boolean {
+export function isEntryFile(name: string, content: string): boolean {
   const lower = name.toLowerCase();
 
   const likelyNames = [
@@ -77,14 +77,14 @@ function isEntryFile(name: string, content: string): boolean {
   return bootKeywords.some((kw) => content.includes(kw));
 }
 
-function detectPackageManager(dir: string): string {
+export function detectPackageManager(dir: string): string {
   if (fs.existsSync(path.join(dir, "pnpm-lock.yaml"))) return "pnpm";
   if (fs.existsSync(path.join(dir, "yarn.lock"))) return "yarn";
   if (fs.existsSync(path.join(dir, "package-lock.json"))) return "npm";
   return "unknown";
 }
 
-function detectTags(packageInfo: any, fileTree: any[]): string[] {
+export function detectTags(packageInfo: any, fileTree: any[]): string[] {
   const tags = new Set<string>();
 
   const deps = Object.keys({
@@ -140,10 +140,51 @@ function detectTags(packageInfo: any, fileTree: any[]): string[] {
   return Array.from(tags);
 }
 
+export function buildFileTreeLight(files: string[]) {
+  const tree: any[] = [];
+
+  for (const file of files) {
+    const parts = file.split("/");
+    let current = tree;
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      const isFile = i === parts.length - 1;
+
+      let existing = current.find((n) => n.name === part);
+
+      if (!existing) {
+        existing = {
+          name: part,
+          type: isFile ? "file" : "folder",
+          fullPath: isFile ? file : undefined,
+          language: isFile ? detectLanguage(file) : undefined,
+          children: isFile ? undefined : [],
+        };
+
+        current.push(existing);
+      }
+
+      if (!isFile) current = existing.children;
+    }
+  }
+
+  return tree;
+}
+
 export async function buildFileTree(files: string[], rootDir: string) {
   const tree: any[] = [];
 
   for (const file of files) {
+    if (
+      file.includes(".spec.") ||
+      file.includes(".test.") ||
+      file.includes("/e2e/") ||
+      file.includes("/__tests__/")
+    ) {
+      continue;
+    }
+
     const normalizedFile = file.endsWith("/") ? file.slice(0, -1) : file;
     const parts = normalizedFile.split("/");
 

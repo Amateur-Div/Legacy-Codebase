@@ -54,6 +54,7 @@ import {
 } from "@/app/api/lib/graph/graphPatcher";
 import { ImpactSummaryCard } from "./ImpactSummaryCard";
 import { FlowGraph } from "@/app/api/lib/analyzer/types";
+import FlowVisualizer from "./FlowVisualizer";
 
 interface FileViewerPanelProps {
   projectId: number | ObjectId;
@@ -654,11 +655,20 @@ export default function FileViewerPanel({
               />
             </div>
 
-            <ProjectAnalyzer
+            {/* <ProjectAnalyzer
               id={project.projectId}
               projectId={projectId}
               graphData={graphData}
               setGraphData={setGraphData}
+              project={project}
+              selectedFileNode={selectedFileNode}
+            /> */}
+
+            <FlowVisualizer
+              graphData={graphData}
+              projectId={projectId}
+              setGraphData={setGraphData}
+              id={project.projectId}
               project={project}
               selectedFileNode={selectedFileNode}
             />

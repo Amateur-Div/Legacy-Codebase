@@ -1,6 +1,6 @@
 import { GridFSBucket, ObjectId } from "mongodb";
-import clientPromise from "@/lib/mongoClient";
 import fs from "fs";
+import clientPromise from "../../../lib/mongoClient";
 
 let bucket: GridFSBucket | null = null;
 
@@ -20,21 +20,28 @@ export async function getGridFSBucket() {
 
 export async function uploadZipToGridFS(
   projectId: string,
-  buffer: Buffer,
-): Promise<ObjectId> {
+  file: File,
+): Promise<string> {
   const bucket = await getGridFSBucket();
 
   const uploadStream = bucket.openUploadStream(`${projectId}.zip`, {
     metadata: { projectId },
   });
 
-  uploadStream.end(buffer);
+  const reader = file.stream().getReader();
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    uploadStream.write(value);
+  }
+
+  uploadStream.end();
 
   return new Promise((resolve, reject) => {
     uploadStream.on("finish", () => {
-      resolve(uploadStream.id as ObjectId);
+      resolve(uploadStream.id.toString()); // keep string for DB
     });
-
     uploadStream.on("error", reject);
   });
 }
@@ -42,7 +49,7 @@ export async function uploadZipToGridFS(
 export async function downloadZipToPath(fileId: ObjectId, destPath: string) {
   const bucket = await getGridFSBucket();
 
-  const stream = bucket.openDownloadStream(fileId);
+  const stream = bucket.openDownloadStream(new ObjectId(fileId));
 
   return new Promise<void>((resolve, reject) => {
     const write = fs.createWriteStream(destPath);

@@ -1,17 +1,20 @@
 import { v4 as uuidv4 } from "uuid";
 import { saveJob, loadJob } from "./jobStore";
 
-type JobStatus = "queued" | "running" | "done" | "error" | "cancelled";
+type JobStatus = "initialized" | "running" | "done" | "error" | "cancelled";
 
 type JobStep =
-  | "queued"
-  | "ingestion"
+  | "initializing"
+  | "extract"
+  | "scan"
+  | "metadata"
+  | "ingest"
   | "file-analysis"
+  | "analyze"
   | "merge"
   | "enrich"
   | "save"
-  | "done"
-  | "error";
+  | "done";
 
 export type Job = {
   id: string;
@@ -27,19 +30,23 @@ export type Job = {
   cursor: number;
   totalFiles: number;
 
+  scanFiles?: string[];
+  scanCursor?: number;
+
   progress: number;
   message?: string;
 
   locked?: boolean;
   totalStoredBytes?: number;
 
-  ingestFiles?: string[];
   ingestCursor?: number;
+  ingestFiles?: string[];
 
+  analysisCursor?: number;
   analysisFiles?: string[];
 
   result?: any;
-  error?: string | null;
+  error?: any;
 };
 
 export function createJob(projectId: string, ownerId?: string, totalFiles = 0) {
@@ -51,14 +58,14 @@ export function createJob(projectId: string, ownerId?: string, totalFiles = 0) {
     ownerId,
     createdAt: Date.now(),
 
-    status: "queued",
-    step: "queued",
+    status: "initialized",
+    step: "initializing",
 
     cursor: 0,
     totalFiles,
 
     progress: 0,
-    message: "Queued",
+    message: "initialized",
   };
 
   saveJob(job).catch(console.error);

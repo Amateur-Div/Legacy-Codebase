@@ -1,12 +1,11 @@
 import { getGraph } from "@/app/api/lib/graph/graphStore";
-import { assertProjectAccess } from "@/app/api/lib/projectAccess";
 import { authMiddleware } from "@/lib/auth-server";
 import clientPromise from "@/lib/mongoClient";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
   req: NextRequest,
-  context: { params: Promise<{ jobId: string }> }
+  context: { params: Promise<{ jobId: string }> },
 ) {
   let projectId = req.url.split("/")[5];
 
@@ -35,7 +34,7 @@ export async function GET(
   } catch (err: any) {
     return NextResponse.json(
       { error: String(err?.message ?? err) },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -60,7 +59,7 @@ export async function PUT(req: NextRequest) {
   } catch (error: any) {
     return NextResponse.json(
       { error: String(error?.message ?? error) },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

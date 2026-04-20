@@ -16,10 +16,9 @@ import { useProject } from "@/context/ProjectContext";
 
 export default function ProjectDetailPage() {
   const router = useRouter();
-  const { ProjectName } = useProject();
   const { id: projectId } = useParams() as { id: string };
+  const { project, setProject } = useProject();
 
-  const [project, setProject] = useState<any>(null);
   const [fileContent, setFileContent] = useState("");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [readmeContent, setReadmeContent] = useState<string | null>(null);
@@ -33,10 +32,15 @@ export default function ProjectDetailPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [readmeSummary, setReadmeSummary] = useState("");
   const [line, setLine] = useState<number | null>(null);
+  const [jobStatus, setJobStatus] = useState<
+    "idle" | "running" | "done" | "error"
+  >("idle");
+  const [jobProgress, setJobProgress] = useState(0);
+  const [jobMessage, setJobMessage] = useState("");
+  const [graphReady, setGraphReady] = useState(false);
 
   useEffect(() => {
-    console.log("ProjectName from project context : ", ProjectName);
-    const load = async () => {
+    const loadProject = async () => {
       const token = await getAuth().currentUser?.getIdToken();
 
       const res = await fetch(`/api/project?id=${projectId}`, {
@@ -48,13 +52,73 @@ export default function ProjectDetailPage() {
       }
 
       setProject(data);
-
-      console.log(data);
     };
-    load();
+    loadProject();
   }, [projectId]);
 
   useEffect(() => {
+    const pollJob = async () => {
+      const token = await getAuth().currentUser?.getIdToken();
+      if (!token) return;
+
+      const res = await fetch(`/api/project?id=${projectId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        return;
+      }
+
+      const project = await res.json();
+
+      try {
+        const res = await fetch(
+          `/api/projects/${project.projectId}/latest-job?token=${encodeURIComponent(token)}`,
+        );
+
+        if (!res.ok) return;
+
+        const job = await res.json();
+
+        if (!job) {
+          setJobStatus("done");
+          setGraphReady(true);
+          return true;
+        }
+
+        setJobStatus(job.status);
+        setJobProgress(job.progress || 0);
+        setJobMessage(job.message || "Processing...");
+
+        if (job.status === "done") {
+          setGraphReady(true);
+          return true;
+        }
+
+        if (job.status === "error") {
+          setJobStatus("error");
+          return true;
+        }
+      } catch (err) {
+        console.error("Polling error", err);
+      }
+
+      return false;
+    };
+
+    const interval = setInterval(async () => {
+      const done = await pollJob();
+      if (done) clearInterval(interval);
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!graphReady || !projectData || !project) {
+      return;
+    }
+
     const getReadMeData = async () => {
       let readmePath;
       if (projectData) {
@@ -68,25 +132,25 @@ export default function ProjectDetailPage() {
         const contentRes = await fetch(
           `/api/project/file?projectId=${
             project?.projectId
-          }&filePath=${encodeURIComponent(readmePath)}`
+          }&filePath=${encodeURIComponent(readmePath)}`,
         );
         const contentData = await contentRes.json();
         setReadmeContent(contentData.content);
       }
     };
     getReadMeData();
-  }, [projectData, project]);
+  }, [graphReady, projectData, project]);
 
   useEffect(() => {
-    if (!project) return;
+    if (!graphReady || !project) return;
 
-    const readmeNode = project.fileTree.find(
-      (file: any) => file.name.toLowerCase() === "readme.md"
+    const readmeNode = project.fileTree?.find(
+      (file: any) => file.name.toLowerCase() === "readme.md",
     );
 
     if (readmeNode) {
       fetch(
-        `/api/project/file?projectId=${project.projectId}&filePath=${readmeNode.fullPath}`
+        `/api/project/file?projectId=${project.projectId}&filePath=${readmeNode.fullPath}`,
       )
         .then((res) => res.text())
         .then((content) => {
@@ -94,7 +158,7 @@ export default function ProjectDetailPage() {
           setReadmeSummary(generateSummary(content));
         });
     }
-  }, [project]);
+  }, [graphReady, project]);
 
   function generateSummary(md: string): string {
     const lines = md.split("\n").filter(Boolean);
@@ -109,6 +173,9 @@ export default function ProjectDetailPage() {
   }
 
   function findReadmePath(tree: any[]): string | null {
+    if (!tree) {
+      return null;
+    }
     for (const node of tree) {
       if (node.type === "file" && node.name.toLowerCase() === "\\readme.md") {
         return node.fullPath;
@@ -151,25 +218,29 @@ export default function ProjectDetailPage() {
     return { nodes, edges };
   }
 
-  const graph = project && buildDependencyGraph(project.fileTree);
+  const graph =
+    graphReady && project?.fileTree && buildDependencyGraph(project.fileTree);
+  const nodesData = graph
+    ? graph?.nodes.map((id: any) => ({
+        id,
+        data: { label: id.split("/").pop() },
+        position: { x: Math.random() * 600, y: Math.random() * 600 },
+        type: "default",
+      }))
+    : [];
 
-  const nodesData = graph?.nodes.map((id: any) => ({
-    id,
-    data: { label: id.split("/").pop() },
-    position: { x: Math.random() * 600, y: Math.random() * 600 },
-    type: "default",
-  }));
-
-  const edgesData = graph?.edges.map(([from, to]: any, i: any) => ({
-    id: `e${i}`,
-    source: from,
-    target: to,
-    type: "smoothstep",
-  }));
+  const edgesData = graph
+    ? graph?.edges.map(([from, to]: any, i: any) => ({
+        id: `e${i}`,
+        source: from,
+        target: to,
+        type: "smoothstep",
+      }))
+    : [];
 
   const handleDelete = async () => {
     const confirmDelete = window.confirm(
-      "Are you sure you want to delete this project?"
+      "Are you sure you want to delete this project?",
     );
     if (!confirmDelete) return;
 
@@ -289,14 +360,18 @@ export default function ProjectDetailPage() {
     const token = await getAuth().currentUser?.getIdToken();
 
     const res = await fetch(
-      `/api/project/file?projectId=${
-        project.projectId
-      }&filePath=${encodeURIComponent(path)}`,
+      `/api/projects/${project.projectId}/file-content?path=${encodeURIComponent(path)}`,
       {
-        headers: { Authorization: `Bearer ${token}` },
-      }
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
     );
+
     const data = await res.json();
+
+    console.log("File data : ", data);
+
     setFileContent(data.content || "Unable to load file.");
   };
 
@@ -344,6 +419,10 @@ export default function ProjectDetailPage() {
   }
 
   function findSelectedFileNode(tree: any[]): any | null {
+    if (!tree) {
+      return null;
+    }
+
     for (const node of tree) {
       if (node.type === "file" && node.fullPath === selectedPath) {
         return node;
@@ -364,19 +443,55 @@ export default function ProjectDetailPage() {
       <div className="p-6 space-y-4">
         <div className="h-6 w-48 bg-muted animate-pulse rounded" />
         <div className="h-5 w-32 bg-muted animate-pulse rounded" />
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-20 bg-muted animate-pulse rounded-lg" />
-          ))}
+      </div>
+    );
+  }
+
+  if (!project.analysisComplete) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[70vh] space-y-6">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold">Analyzing your repository</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            {jobMessage || "This may take a few seconds..."}
+          </p>
+        </div>
+
+        <div className="w-96 bg-gray-300 rounded-full h-2 overflow-hidden">
+          <div
+            className="bg-blue-600 h-2 transition-all duration-500 ease-out"
+            style={{ width: `${jobProgress}%` }}
+          />
+        </div>
+
+        <div className="text-sm text-muted-foreground">
+          {jobProgress}% complete
+        </div>
+
+        <div className="flex space-x-1">
+          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" />
+          <div className="w-2 h-2 bg-primary rounded-full animate-bounce delay-150" />
+          <div className="w-2 h-2 bg-primary rounded-full animate-bounce delay-300" />
         </div>
       </div>
     );
   }
 
-  const filteredTree = filterFileTree(project.fileTree, searchTerm);
+  if (jobStatus === "error") {
+    return (
+      <div className="flex flex-col items-center justify-center h-[70vh] text-red-600">
+        <p className="text-lg font-semibold">Analysis Failed</p>
+        <p className="text-sm">{jobMessage}</p>
+      </div>
+    );
+  }
+
+  const filteredTree = project?.fileTree
+    ? filterFileTree(project.fileTree, searchTerm)
+    : [];
 
   return (
-    <div className="p-6 space-y-6 flex flex-col h-full w-full overflow-auto">
+    <div className="p-6 space-y-6 flex flex-col h-full w-full overflow-auto animate-fade-in">
       <ProjectPresenceProvider projectId={projectId}>
         <ProjectHeader
           projectName={project.projectName}
@@ -398,7 +513,13 @@ export default function ProjectDetailPage() {
           packageInfo={project?.packageInfo}
           getLanguageColor={getLanguageColor}
         />
-        <DependencyGraph nodesData={nodesData} edgesData={edgesData} />
+
+        <div className="bg-card border rounded-xl p-4 shadow-sm">
+          <h3 className="text-sm font-medium mb-2 text-muted-foreground">
+            Dependency Graph
+          </h3>
+          <DependencyGraph nodesData={nodesData} edgesData={edgesData} />
+        </div>
 
         <CollaboratorsBar />
 

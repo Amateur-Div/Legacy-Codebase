@@ -1,4 +1,4 @@
-import clientPromise from "@/lib/mongoClient";
+import clientPromise from "../../../lib/mongoClient";
 
 export async function getCodeFiles(projectId: string) {
   const db = (await clientPromise).db();

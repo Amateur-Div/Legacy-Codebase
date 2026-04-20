@@ -254,10 +254,41 @@ export function extractStructureBabel(
 
   let ast;
 
+  if (
+    filePath.includes(".spec.") ||
+    filePath.includes(".test.") ||
+    filePath.includes("/e2e/") ||
+    filePath.includes("/__tests__/")
+  ) {
+    return {
+      imports: [],
+      functions: [],
+      classes: [],
+      components: [],
+      interfaces: [],
+      exports: [],
+      blocks: [],
+      apis: [],
+      schemas: [],
+    };
+  }
+
   try {
     ast = babelParser.parse(code, {
       sourceType: "unambiguous",
-      plugins: ["jsx", "typescript", "decorators-legacy"],
+      allowReturnOutsideFunction: true,
+      errorRecovery: true,
+      plugins: [
+        "typescript",
+        "jsx",
+        ["decorators", { decoratorsBeforeExport: false }],
+        "classProperties",
+        "classPrivateProperties",
+        "classPrivateMethods",
+        "dynamicImport",
+        "optionalChaining",
+        "nullishCoalescingOperator",
+      ],
     });
   } catch (err: any) {
     return {

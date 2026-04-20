@@ -23,7 +23,6 @@ export default function ProjectAnalyzer({
   selectedFileNode: any;
 }) {
   const { jobId, setJobId } = useAuth();
-
   const [status, setStatus] = useState<"idle" | "running" | "done" | "error">(
     "idle",
   );
@@ -91,10 +90,10 @@ export default function ProjectAnalyzer({
 
     pollingTimer = window.setInterval(async () => {
       try {
-        await fetch("/api/worker/process", { method: "POST" });
-
         const job = await fetchJobStatus();
         if (!job) return;
+
+        console.log("Job : ", job);
 
         setProgress(job.progress ?? 0);
         setMessage(job.message ?? "Processing...");

@@ -250,12 +250,18 @@ export function instrumentExecutionBabel(code: string): FlowGraph {
   try {
     const ast = babelParser.parse(code, {
       sourceType: "unambiguous",
+      allowReturnOutsideFunction: true,
+      errorRecovery: true,
       plugins: [
-        "jsx",
         "typescript",
+        "jsx",
+        ["decorators", { decoratorsBeforeExport: false }],
         "classProperties",
+        "classPrivateProperties",
+        "classPrivateMethods",
+        "dynamicImport",
         "optionalChaining",
-        "decorators-legacy",
+        "nullishCoalescingOperator",
       ],
     });
 
