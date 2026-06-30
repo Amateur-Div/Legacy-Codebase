@@ -7,200 +7,302 @@ import {
   PlusIcon,
   XIcon,
   MoreVertical,
-  ShareIcon,
   Share2Icon,
   Users2,
+  TagsIcon,
+  Layers3Icon,
 } from "lucide-react";
-import { useState } from "react";
+
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
+
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
 import ShareProjectModal from "@/components/ShareProjectModel";
-import { useRouter } from "next/navigation";
 
 interface ProjectHeaderProps {
   projectName: string;
   projectId: string;
+
   editingName: boolean;
   newName: string;
+
   setNewName: (val: string) => void;
   setEditingName: (val: boolean) => void;
+
   handleRename: () => void;
+
   tags: string[];
   tagInput: string;
+
   setTagInput: (val: string) => void;
   setTags: (tags: string[]) => void;
+
   handleDelete: () => void;
 }
+
+const AUTO_TECH_TAGS = [
+  "react",
+  "nextjs",
+  "express",
+  "nestjs",
+  "mongodb",
+  "firebase",
+  "tailwind",
+  "prisma",
+  "typescript",
+  "redux",
+  "docker",
+];
 
 export default function ProjectHeader({
   projectName,
   projectId,
+
   editingName,
   newName,
+
   setNewName,
   setEditingName,
+
   handleRename,
+
   tags,
   tagInput,
+
   setTagInput,
   setTags,
+
   handleDelete,
 }: ProjectHeaderProps) {
   const [tagError, setTagError] = useState("");
-  const [ShareProject, setShareProject] = useState<boolean>(false);
+
+  const [shareProject, setShareProject] = useState(false);
+
   const router = useRouter();
 
+  const { stackTags, customTags } = useMemo(() => {
+    const auto: string[] = [];
+    const custom: string[] = [];
+
+    for (const tag of tags) {
+      if (AUTO_TECH_TAGS.includes(tag.toLowerCase())) {
+        auto.push(tag);
+      } else {
+        custom.push(tag);
+      }
+    }
+
+    return {
+      stackTags: auto,
+      customTags: custom,
+    };
+  }, [tags]);
+
   const addTag = () => {
-    const trimmed = tagInput.trim();
+    const trimmed = tagInput.trim().toLowerCase();
+
     if (!trimmed) return;
+
     if (tags.includes(trimmed)) {
-      setTagError("Duplicate tag");
+      setTagError("Tag already exists");
       return;
     }
+
+    if (trimmed.length > 24) {
+      setTagError("Tag is too long");
+      return;
+    }
+
     setTags([...tags, trimmed]);
+
     setTagInput("");
     setTagError("");
   };
 
-  const removeTag = (index: number) => {
-    const updated = [...tags];
-    updated.splice(index, 1);
-    setTags(updated);
+  const removeTag = (tag: string) => {
+    setTags(tags.filter((t) => t !== tag));
   };
 
   const handleRenameClick = () => {
+    if (!newName.trim()) return;
+
     handleRename();
     setEditingName(false);
-    toast.success("Project name was changed successfully!");
+    toast.success("Project renamed successfully");
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: -10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="w-full bg-card border rounded-2xl shadow-sm p-5 mb-6"
-    >
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
-        <div className="flex items-center gap-3">
-          {editingName ? (
-            <input
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              className="text-xl font-semibold border border-muted rounded-md px-3 py-1.5 bg-background focus:outline-none"
-              placeholder="Enter project name"
-            />
-          ) : (
-            <h1 className="text-2xl font-semibold text-foreground">
-              {projectName}
-            </h1>
-          )}
-
-          <button
-            onClick={
-              editingName ? handleRenameClick : () => setEditingName(true)
-            }
-            className="text-sm px-3 py-1.5 rounded-md bg-muted hover:bg-muted/70 text-primary flex items-center gap-1 transition"
-          >
+    <>
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25 }}
+        className="w-full rounded-2xl border bg-card shadow-sm p-5 space-y-5"
+      >
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-start gap-3">
             {editingName ? (
-              <SaveIcon className="w-4 h-4" />
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="Enter project name"
+                  className="h-10 rounded-lg border bg-background px-3 text-lg font-semibold outline-none focus:ring-2 focus:ring-primary/20"
+                />
+
+                <button
+                  onClick={handleRenameClick}
+                  className="flex items-center gap-1 rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground transition hover:opacity-90"
+                >
+                  <SaveIcon className="h-4 w-4" />
+                  Save
+                </button>
+              </div>
             ) : (
-              <PencilIcon className="w-4 h-4" />
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+                  {projectName}
+                </h1>
+
+                <button
+                  onClick={() => setEditingName(true)}
+                  className="rounded-md border bg-muted/40 p-2 transition hover:bg-muted"
+                >
+                  <PencilIcon className="h-4 w-4 text-muted-foreground" />
+                </button>
+              </div>
             )}
-            {editingName ? "Save" : "Rename"}
-          </button>
+          </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="self-start rounded-lg border p-2 transition hover:bg-muted">
+                <MoreVertical className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+
+            <DropdownMenuContent align="end" className="w-52 bg-popover">
+              <DropdownMenuItem
+                onClick={() => setShareProject(true)}
+                className="cursor-pointer"
+              >
+                <Share2Icon className="mr-2 h-4 w-4" />
+                Share Project
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={() => router.push(`/projects/${projectId}/members`)}
+                className="cursor-pointer"
+              >
+                <Users2 className="mr-2 h-4 w-4" />
+                Manage Members
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={handleDelete}
+                className="cursor-pointer text-red-600 focus:text-red-600"
+              >
+                <Trash2Icon className="mr-2 h-4 w-4" />
+                Delete Project
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <MoreVertical size={16} className="cursor-pointer" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44 bg-white">
-            <DropdownMenuItem
-              onClick={handleDelete}
-              className="cursor-pointer text-red-600 hover:text-red-700 transition"
-            >
-              <Trash2Icon className="w-4 h-4" /> Delete Project
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => setShareProject(true)}
-              className="cursor-pointer hover:text-blue-500"
-            >
-              <Share2Icon className="w-4 h-4" /> Share Project
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => router.push(`/projects/${projectId}/members`)}
-              className="cursor-pointer"
-            >
-              <Users2 className="w-4 h-4" /> Members
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+        {stackTags.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <Layers3Icon className="h-4 w-4 text-primary" />
+              Tech Stack
+            </div>
 
-      {ShareProject && (
+            <div className="flex flex-wrap gap-2">
+              {stackTags.map((tag) => (
+                <div
+                  key={tag}
+                  className="rounded-full border bg-primary/5 px-3 py-1 text-xs font-medium text-primary"
+                >
+                  {tag}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <TagsIcon className="h-4 w-4 text-primary" />
+            Custom Tags
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {customTags.map((tag) => (
+              <motion.div
+                key={tag}
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="flex items-center gap-1 rounded-full border bg-muted/40 px-3 py-1 text-xs text-muted-foreground"
+              >
+                <span>#{tag}</span>
+
+                <button
+                  onClick={() => removeTag(tag)}
+                  className="transition hover:text-red-500"
+                >
+                  <XIcon className="h-3 w-3" />
+                </button>
+              </motion.div>
+            ))}
+
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={tagInput}
+                placeholder="Add custom tag"
+                onChange={(e) => {
+                  setTagInput(e.target.value);
+
+                  if (tagError) {
+                    setTagError("");
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    addTag();
+                  }
+                }}
+                className="h-9 rounded-lg border bg-background px-3 text-xs outline-none focus:ring-2 focus:ring-primary/20"
+              />
+
+              <button
+                type="button"
+                onClick={addTag}
+                className="rounded-lg border bg-muted/40 p-2 transition hover:bg-muted"
+              >
+                <PlusIcon className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </div>
+          </div>
+
+          {tagError && <p className="text-xs text-red-500">{tagError}</p>}
+        </div>
+      </motion.div>
+
+      {shareProject && (
         <ShareProjectModal
           projectId={projectId}
           onClose={() => setShareProject(false)}
         />
       )}
-
-      <div className="flex flex-wrap items-center gap-2">
-        {tags.map((tag, i) => (
-          <motion.div
-            key={i}
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="flex items-center px-3 py-1 text-xs bg-muted rounded-full border text-muted-foreground gap-1"
-          >
-            #{tag}
-            <button
-              onClick={() => removeTag(i)}
-              className="hover:text-red-500 transition"
-              aria-label="Remove tag"
-            >
-              <XIcon className="w-3 h-3" />
-            </button>
-          </motion.div>
-        ))}
-
-        <div className="flex items-center gap-1">
-          <input
-            type="text"
-            placeholder="Add tag"
-            value={tagInput}
-            onChange={(e) => setTagInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && addTag()}
-            className="text-xs px-3 py-1.5 border rounded-md bg-background focus:outline-none"
-          />
-          <TooltipProvider>
-            <Tooltip>
-              <button
-                title="button"
-                type={"button"}
-                onClick={addTag}
-                className="p-1.5 rounded-md bg-muted hover:bg-muted/70 transition"
-              >
-                <PlusIcon className="w-4 h-4 text-muted-foreground" />
-              </button>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-
-        {tagError && (
-          <span className="text-xs text-red-500 ml-2 animate-pulse">
-            {tagError}
-          </span>
-        )}
-      </div>
-    </motion.div>
+    </>
   );
 }

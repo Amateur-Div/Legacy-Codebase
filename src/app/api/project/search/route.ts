@@ -1,108 +1,233 @@
 import { NextRequest, NextResponse } from "next/server";
-import path from "path";
-import fs from "fs";
 import clientPromise from "@/lib/mongoClient";
+
+const MAX_RESULTS = 75;
 
 export async function POST(req: NextRequest) {
   try {
     const { projectId, query } = await req.json();
 
-    if (!query || !projectId) {
+    if (!projectId || !query?.trim()) {
       return NextResponse.json(
-        { error: "Missing query or projectId" },
-        { status: 400 }
+        {
+          error: "Missing query or projectId",
+        },
+        {
+          status: 400,
+        },
       );
     }
 
-    const db = (await clientPromise).db();
-    const project = await db.collection("projects").findOne({ projectId });
+    const normalizedQuery = query.trim().toLowerCase();
 
-    if (!project) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    const db = (await clientPromise).db();
+
+    const projectExists = await db.collection("projects").findOne(
+      {
+        projectId,
+      },
+      {
+        projection: {
+          _id: 1,
+        },
+      },
+    );
+
+    if (!projectExists) {
+      return NextResponse.json(
+        {
+          error: "Project not found",
+        },
+        {
+          status: 404,
+        },
+      );
     }
+
+    const metadataFiles = await db
+      .collection("project_files")
+      .find({
+        projectId,
+
+        $or: [
+          {
+            "functions.name": {
+              $regex: normalizedQuery,
+              $options: "i",
+            },
+          },
+
+          {
+            "classes.name": {
+              $regex: normalizedQuery,
+              $options: "i",
+            },
+          },
+
+          {
+            "exports.name": {
+              $regex: normalizedQuery,
+              $options: "i",
+            },
+          },
+
+          {
+            "components.name": {
+              $regex: normalizedQuery,
+              $options: "i",
+            },
+          },
+        ],
+      })
+      .project({
+        path: 1,
+        functions: 1,
+        classes: 1,
+        exports: 1,
+        components: 1,
+      })
+      .limit(25)
+      .toArray();
 
     const matches: any[] = [];
 
-    const walkTree = (nodes: any[]) => {
-      for (const node of nodes) {
-        if (node.type === "file" && node.fullPath) {
-          const absPath = path.join(
-            process.cwd(),
-            "project_uploads",
-            projectId,
-            node.fullPath
-          );
+    for (const file of metadataFiles) {
+      const symbolGroups = [
+        {
+          items: file.functions || [],
+          type: "function",
+        },
 
-          const metaTypes = [
-            { field: "functions", label: "function" },
-            { field: "classes", label: "class" },
-            { field: "components", label: "component" },
-            { field: "exports", label: "export" },
-            { field: "highlights", label: "highlight" },
-            { field: "imports", label: "import", key: "value" },
-          ];
+        {
+          items: file.classes || [],
+          type: "class",
+        },
 
-          for (const { field, label, key = "name" } of metaTypes) {
-            const items = node[field];
-            if (Array.isArray(items)) {
-              for (const item of items) {
-                const text = item?.[key]?.toLowerCase?.();
-                if (text && text.includes(query.toLowerCase())) {
-                  matches.push({
-                    path: node.fullPath,
-                    line: item.loc,
-                    snippet: item[key],
-                    type: label,
-                    match: item[key],
-                  });
-                }
-              }
+        {
+          items: file.exports || [],
+          type: "export",
+        },
+
+        {
+          items: file.components || [],
+          type: "component",
+        },
+      ];
+
+      for (const group of symbolGroups) {
+        for (const item of group.items) {
+          if (item?.name?.toLowerCase().includes(normalizedQuery)) {
+            matches.push({
+              path: file.path,
+              line: item.loc || item.line || 1,
+              snippet: item.name,
+              type: group.type,
+              match: item.name,
+            });
+
+            if (matches.length >= MAX_RESULTS) {
+              break;
             }
           }
+        }
 
-          try {
-            const content = fs.readFileSync(absPath, "utf-8");
-            const lines = content.split("\n");
-
-            lines.forEach((line, idx) => {
-              if (line.toLowerCase().includes(query.toLowerCase())) {
-                matches.push({
-                  path: node.fullPath,
-                  line: idx + 1,
-                  snippet: line.trim(),
-                  type: "text",
-                  match: query,
-                });
-              }
-            });
-          } catch (e) {
-            console.warn("Could not read file content:", node.fullPath);
-          }
-        } else if (node.children) {
-          walkTree(node.children);
+        if (matches.length >= MAX_RESULTS) {
+          break;
         }
       }
-    };
 
-    walkTree(project.fileTree);
+      if (matches.length >= MAX_RESULTS) {
+        break;
+      }
+    }
+
+    if (matches.length < MAX_RESULTS) {
+      const textFiles = await db
+        .collection("project_files")
+        .find({
+          projectId,
+
+          content: {
+            $exists: true,
+            $ne: "",
+          },
+
+          $text: {
+            $search: normalizedQuery,
+          },
+        })
+        .project({
+          path: 1,
+          content: 1,
+
+          score: {
+            $meta: "textScore",
+          },
+        })
+        .sort({
+          score: {
+            $meta: "textScore",
+          },
+        })
+        .limit(25)
+        .toArray();
+
+      for (const file of textFiles) {
+        if (!file.content) continue;
+
+        const lines = file.content.split("\n");
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+
+          if (line.toLowerCase().includes(normalizedQuery)) {
+            matches.push({
+              path: file.path,
+              line: i + 1,
+              snippet: line.trim(),
+              type: "text",
+              match: normalizedQuery,
+            });
+
+            if (matches.length >= MAX_RESULTS) {
+              break;
+            }
+          }
+        }
+
+        if (matches.length >= MAX_RESULTS) {
+          break;
+        }
+      }
+    }
 
     const deduplicated = [];
+
     const seen = new Set();
 
     for (const item of matches) {
-      const key = `${item.path.toLowerCase().trim()}|${item.line}`;
+      const key = `${item.path}|${item.line}|${item.type}`;
+
       if (!seen.has(key)) {
         seen.add(key);
+
         deduplicated.push(item);
       }
     }
 
-    return NextResponse.json({ results: deduplicated });
+    return NextResponse.json({
+      results: deduplicated,
+    });
   } catch (err) {
-    console.error("Search error:", err);
+    console.error("SEARCH_ERROR:", err);
+
     return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
+      {
+        error: "Internal server error",
+      },
+      {
+        status: 500,
+      },
     );
   }
 }

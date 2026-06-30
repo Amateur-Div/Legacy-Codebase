@@ -7,7 +7,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { UploadCloud, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import clsx from "clsx";
@@ -26,6 +26,13 @@ export default function UploadProjectModal({ open, onClose }: Props) {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
 
+  useEffect(() => {
+    if (!open) {
+      setFile(null);
+      setDragOver(false);
+    }
+  }, [open]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const uploaded = e.target.files?.[0];
     validateAndSetFile(uploaded);
@@ -33,7 +40,7 @@ export default function UploadProjectModal({ open, onClose }: Props) {
 
   const validateAndSetFile = (uploaded?: File) => {
     if (!uploaded) return;
-    if (!uploaded.name.endsWith(".zip")) {
+    if (!uploaded.name.toLocaleLowerCase().endsWith(".zip")) {
       toast.error("Only ZIP files are supported.");
       return;
     }
@@ -60,7 +67,6 @@ export default function UploadProjectModal({ open, onClose }: Props) {
 
       const result = await res.json();
       setJobId(result.jobId);
-      console.log("Success , JobId : ", result.jobId);
 
       if (res.ok) {
         toast.success(`${file.name} uploaded successfully!`);
@@ -78,7 +84,14 @@ export default function UploadProjectModal({ open, onClose }: Props) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog
+      open={open}
+      onOpenChange={(value) => {
+        if (!value) {
+          onClose();
+        }
+      }}
+    >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold">
@@ -100,15 +113,29 @@ export default function UploadProjectModal({ open, onClose }: Props) {
             validateAndSetFile(dropped);
           }}
           className={clsx(
-            "border border-dashed rounded-xl p-6 text-center cursor-pointer transition-all duration-200",
-            dragOver && "bg-muted/40",
-            file ? "border-green-500 bg-green-50" : "hover:bg-muted/30"
+            "group rounded-2xl border border-dashed p-8 text-center transition-all duration-200 cursor-pointer",
+            dragOver && "border-primary bg-primary/5 scale-[1.01]",
+            file && "border-green-500 bg-green-500/5",
+            !dragOver && !file && "hover:bg-muted/40 hover:border-primary/40",
           )}
         >
-          <UploadCloud className="mx-auto mb-2 text-primary" size={32} />
-          <p className="text-sm font-medium text-muted-foreground">
-            {file ? file.name : "Click or drag a ZIP file here to upload"}
-          </p>
+          <UploadCloud
+            className={clsx(
+              "mx-auto mb-3 transition-transform duration-200",
+              dragOver
+                ? "scale-110 text-primary"
+                : "text-muted-foreground group-hover:text-primary",
+            )}
+            size={34}
+          />
+          <div className="space-y-1">
+            <p className="text-sm font-medium">
+              {file ? file.name : "Click or drag a ZIP file here to upload"}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Upload a compressed repository archive
+            </p>
+          </div>
         </div>
 
         <input
@@ -122,7 +149,7 @@ export default function UploadProjectModal({ open, onClose }: Props) {
         <Button
           disabled={!file || uploading}
           onClick={handleUpload}
-          className="w-full mt-4"
+          className="mt-2 w-full h-11"
         >
           {uploading ? (
             <>

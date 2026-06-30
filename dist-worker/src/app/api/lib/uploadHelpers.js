@@ -38,29 +38,17 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.extractHighlights = extractHighlights;
 exports.isBinaryFile = isBinaryFile;
-exports.isEntryFile = isEntryFile;
+exports.analyzeEntrypoint = analyzeEntrypoint;
+exports.calculateRepositoryInsights = calculateRepositoryInsights;
 exports.detectPackageManager = detectPackageManager;
 exports.detectTags = detectTags;
-exports.buildFileTreeLight = buildFileTreeLight;
 exports.buildFileTree = buildFileTree;
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const babelParser = __importStar(require("@babel/parser"));
 const language_1 = require("../lib/language");
 const extractStructureBable_1 = require("../lib/extractStructureBable");
-const instrumentExecutionBabel_1 = require("../lib/instrumentExecutionBabel");
 const MAX_FILE_SIZE_BYTES = 1024 * 1024;
-const MAX_STORE_SIZE_BYTES = 15 * 1024 * 1024;
-const IGNORE_DIRS = new Set([
-    "node_modules",
-    ".git",
-    "dist",
-    "build",
-    "coverage",
-    ".next",
-    ".turbo",
-    ".cache",
-]);
 function extractHighlights(code) {
     const ast = babelParser.parse(code, {
         sourceType: "unambiguous",
@@ -85,32 +73,178 @@ function extractHighlights(code) {
 function isBinaryFile(buffer) {
     return buffer.includes(0);
 }
-function isEntryFile(name, content) {
-    const lower = name.toLowerCase();
-    const likelyNames = [
-        "index.js",
-        "index.ts",
-        "main.js",
+function analyzeEntrypoint(filePath, content) {
+    let score = 0;
+    const reasons = [];
+    const lower = filePath.toLowerCase();
+    if (lower.includes(".spec.") ||
+        lower.includes(".test.") ||
+        lower.includes("/__tests__/") ||
+        lower.includes("/e2e/")) {
+        return {
+            isLikelyEntry: false,
+            score: 0,
+            reasons: [],
+        };
+    }
+    const strongNames = [
         "main.ts",
-        "app.js",
-        "app.ts",
-        "cli.js",
-        "cli.ts",
-        "server.js",
+        "main.js",
         "server.ts",
+        "server.js",
+        "cli.ts",
+        "cli.js",
     ];
-    const bootKeywords = [
-        "listen(",
-        "createRoot(",
-        "ReactDOM.render(",
-        "process.argv",
-        "app.use(",
-        "render(",
-        "nextApp.prepare(",
-    ];
-    if (likelyNames.includes(lower))
-        return true;
-    return bootKeywords.some((kw) => content.includes(kw));
+    if (strongNames.some((n) => lower.endsWith(n))) {
+        score += 30;
+        reasons.push("strong filename");
+    }
+    const weakNames = ["index.ts", "index.js", "app.ts", "app.js"];
+    if (weakNames.some((n) => lower.endsWith(n))) {
+        score += 10;
+        reasons.push("common entry filename");
+    }
+    if (content.includes("NestFactory.create")) {
+        score += 70;
+        reasons.push("nestjs bootstrap");
+    }
+    if (content.includes(".listen(") || content.includes("createServer(")) {
+        score += 50;
+        reasons.push("http listener");
+    }
+    if (content.includes("createRoot(") || content.includes("ReactDOM.render(")) {
+        score += 60;
+        reasons.push("react bootstrap");
+    }
+    if (content.includes("process.argv") || content.includes("commander")) {
+        score += 40;
+        reasons.push("cli runtime");
+    }
+    if (lower.includes("/app/layout.") ||
+        lower.includes("/app/page.") ||
+        lower.includes("/middleware.")) {
+        score += 35;
+        reasons.push("nextjs app entry");
+    }
+    if (lower.includes("/components/") ||
+        lower.includes("/hooks/") ||
+        lower.includes("/utils/")) {
+        score -= 25;
+        reasons.push("utility/component file");
+    }
+    if (content.split("\n").length < 5) {
+        score -= 10;
+    }
+    return {
+        isLikelyEntry: score >= 40,
+        score,
+        reasons,
+    };
+}
+const CATEGORY_MAP = {
+    ts: "code",
+    tsx: "code",
+    js: "code",
+    jsx: "code",
+    json: "config",
+    yaml: "config",
+    yml: "config",
+    env: "config",
+    toml: "config",
+    ini: "config",
+    md: "docs",
+    mdx: "docs",
+    svg: "asset",
+    png: "asset",
+    jpg: "asset",
+    jpeg: "asset",
+    gif: "asset",
+    webp: "asset",
+    dockerfile: "infra",
+    tf: "infra",
+    sh: "script",
+    bat: "script",
+    graphql: "schema",
+    gql: "schema",
+    prisma: "schema",
+    proto: "schema",
+};
+function getCategory(extension) {
+    return CATEGORY_MAP[extension] || "other";
+}
+function getExtension(fileName) {
+    var _a;
+    const ext = (_a = fileName.split(".").pop()) === null || _a === void 0 ? void 0 : _a.toLowerCase();
+    if (!ext || ext === fileName.toLowerCase()) {
+        return "unknown";
+    }
+    return ext;
+}
+function calculateRepositoryInsights(tree) {
+    let totalLOC = 0;
+    let totalFiles = 0;
+    let totalFolders = 0;
+    let largestFile = {
+        name: "",
+        loc: 0,
+    };
+    const compositionMap = {};
+    const walk = (nodes) => {
+        for (const node of nodes) {
+            if (node.type === "folder") {
+                totalFolders++;
+                if (node.children) {
+                    walk(node.children);
+                }
+                continue;
+            }
+            totalFiles++;
+            const loc = node.loc || 0;
+            totalLOC += loc;
+            if (loc > largestFile.loc) {
+                largestFile = {
+                    name: node.name,
+                    loc,
+                };
+            }
+            const extension = getExtension(node.name);
+            const category = getCategory(extension);
+            if (!compositionMap[extension]) {
+                compositionMap[extension] = {
+                    extension,
+                    category,
+                    files: 0,
+                    loc: 0,
+                };
+            }
+            compositionMap[extension].files += 1;
+            if (category === "code" ||
+                category === "docs" ||
+                category === "schema" ||
+                category === "script") {
+                compositionMap[extension].loc += loc;
+            }
+        }
+    };
+    walk(tree);
+    const composition = Object.values(compositionMap)
+        .map((entry) => ({
+        ...entry,
+        percent: totalLOC > 0 ? Number(((entry.loc / totalLOC) * 100).toFixed(1)) : 0,
+    }))
+        .sort((a, b) => {
+        if (b.loc !== a.loc) {
+            return b.loc - a.loc;
+        }
+        return b.files - a.files;
+    });
+    return {
+        totalLOC,
+        totalFiles,
+        totalFolders,
+        largestFile,
+        repositoryComposition: composition,
+    };
 }
 function detectPackageManager(dir) {
     if (fs_1.default.existsSync(path_1.default.join(dir, "pnpm-lock.yaml")))
@@ -126,16 +260,12 @@ function detectTags(packageInfo, fileTree) {
     const deps = Object.keys({
         ...packageInfo === null || packageInfo === void 0 ? void 0 : packageInfo.dependencies,
         ...packageInfo === null || packageInfo === void 0 ? void 0 : packageInfo.devDependencies,
-    });
-    const allFilenames = [];
+    }).map((d) => d.toLowerCase());
+    const filenames = [];
     const walk = (nodes) => {
-        var _a, _b;
         for (const node of nodes) {
             if (node.type === "file") {
-                allFilenames.push(node.name.toLowerCase());
-                if (((_a = node.fullPath) === null || _a === void 0 ? void 0 : _a.endsWith(".ts")) || ((_b = node.fullPath) === null || _b === void 0 ? void 0 : _b.endsWith(".tsx"))) {
-                    tags.add("typescript");
-                }
+                filenames.push(node.name.toLowerCase());
             }
             else if (node.children) {
                 walk(node.children);
@@ -143,56 +273,34 @@ function detectTags(packageInfo, fileTree) {
         }
     };
     walk(fileTree);
-    const techKeywords = {
+    const techMap = {
         react: ["react", "react-dom"],
         nextjs: ["next"],
         express: ["express"],
-        tailwind: ["tailwindcss", "tailwind.config.js"],
-        typescript: ["typescript", ".ts", ".tsx"],
-        prisma: ["prisma", "prisma/schema.prisma"],
-        firebase: ["firebase", "firebase-admin", "firebaseConfig"],
-        eslint: ["eslint", ".eslintrc", "@eslint"],
-        mongodb: ["mongodb", "mongoose", "mongoClient"],
+        nestjs: ["@nestjs/core"],
+        mongodb: ["mongodb", "mongoose"],
+        firebase: ["firebase", "firebase-admin"],
+        prisma: ["prisma"],
+        tailwind: ["tailwindcss"],
+        redux: ["redux", "@reduxjs/toolkit"],
+        typescript: ["typescript"],
     };
-    for (const [tag, matchers] of Object.entries(techKeywords)) {
-        for (const keyword of matchers) {
-            const kw = keyword.toLowerCase();
-            if (deps.some((d) => d.toLowerCase().includes(kw))) {
-                tags.add(tag);
-                break;
-            }
-            if (allFilenames.some((f) => f.includes(kw))) {
-                tags.add(tag);
-                break;
-            }
+    for (const [tag, matchers] of Object.entries(techMap)) {
+        if (matchers.some((m) => deps.some((d) => d.includes(m)))) {
+            tags.add(tag);
         }
+    }
+    if (filenames.includes("tailwind.config.js") ||
+        filenames.includes("tailwind.config.ts")) {
+        tags.add("tailwind");
+    }
+    if (filenames.includes("tsconfig.json")) {
+        tags.add("typescript");
+    }
+    if (filenames.includes("docker-compose.yml")) {
+        tags.add("docker");
     }
     return Array.from(tags);
-}
-function buildFileTreeLight(files) {
-    const tree = [];
-    for (const file of files) {
-        const parts = file.split("/");
-        let current = tree;
-        for (let i = 0; i < parts.length; i++) {
-            const part = parts[i];
-            const isFile = i === parts.length - 1;
-            let existing = current.find((n) => n.name === part);
-            if (!existing) {
-                existing = {
-                    name: part,
-                    type: isFile ? "file" : "folder",
-                    fullPath: isFile ? file : undefined,
-                    language: isFile ? (0, language_1.detectLanguage)(file) : undefined,
-                    children: isFile ? undefined : [],
-                };
-                current.push(existing);
-            }
-            if (!isFile)
-                current = existing.children;
-        }
-    }
-    return tree;
 }
 async function buildFileTree(files, rootDir) {
     var _a;
@@ -213,7 +321,12 @@ async function buildFileTree(files, rootDir) {
             const fullPath = parts.slice(0, i + 1).join("/");
             let existing = current.find((item) => item.name === part);
             if (!existing) {
-                let size, loc, highlights, entry;
+                let size, loc, highlights;
+                let entryAnalysis = {
+                    isLikelyEntry: false,
+                    score: 0,
+                    reasons: [],
+                };
                 let imports = [];
                 let functions = [];
                 let classes = [];
@@ -222,7 +335,6 @@ async function buildFileTree(files, rootDir) {
                 let blocks = [];
                 let apis = [];
                 let schemas = [];
-                let trackExecution;
                 if (isFile) {
                     const absolutePath = path_1.default.join(rootDir, fullPath);
                     try {
@@ -233,10 +345,9 @@ async function buildFileTree(files, rootDir) {
                             if (!isBinaryFile(buffer)) {
                                 const content = buffer.toString("utf-8");
                                 loc = content.split("\n").length;
-                                entry = isEntryFile(file, content);
+                                entryAnalysis = analyzeEntrypoint(file, content);
                                 const ext = (_a = part.split(".").pop()) === null || _a === void 0 ? void 0 : _a.toLowerCase();
                                 if (["js", "ts", "jsx", "tsx"].includes(ext || "")) {
-                                    trackExecution = (0, instrumentExecutionBabel_1.instrumentExecutionBabel)(content);
                                     highlights = extractHighlights(content);
                                     const symbols = (0, extractStructureBable_1.extractStructureBabel)(fullPath, content);
                                     imports = symbols.imports;
@@ -275,8 +386,7 @@ async function buildFileTree(files, rootDir) {
                     exports,
                     apis,
                     schemas,
-                    trackExecution,
-                    entry,
+                    entry: entryAnalysis,
                     children: isFile ? undefined : [],
                 };
                 current.push(existing);

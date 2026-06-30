@@ -1,9 +1,9 @@
 "use client";
 
-import { Card, CardContent } from "@/components/ui/card";
-import { Folder, CalendarClock } from "lucide-react";
+import { useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { Folder, CalendarClock } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 
 type ProjectCardProps = {
   _id: string;
@@ -18,35 +18,58 @@ export default function ProjectCard({
 }: ProjectCardProps) {
   const router = useRouter();
 
+  const handleOpenProject = useCallback(() => {
+    router.push(`/projects/${_id}`);
+  }, [_id, router]);
+
   return (
-    <motion.div
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      className="transition-transform"
+    <Card
+      role="button"
+      tabIndex={0}
+      onClick={handleOpenProject}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          handleOpenProject();
+        }
+      }}
+      className="
+        group
+        cursor-pointer
+        border-border
+        transition-all
+        duration-200
+        hover:border-primary/40
+        hover:shadow-md
+        hover:bg-muted/30
+        focus-visible:ring-2
+        focus-visible:ring-primary
+      "
     >
-      <Card
-        onClick={() => router.push(`/projects/${_id}`)}
-        className="cursor-pointer border border-border hover:border-primary/50 hover:shadow-md transition-all duration-200"
-      >
-        <CardContent className="p-5 space-y-3">
-          <div className="flex items-center gap-2">
-            <Folder size={20} className="text-primary" />
-            <h2 className="font-semibold text-base truncate max-w-[85%]">
-              {projectName}
-            </h2>
+      <CardContent className="p-5 space-y-4">
+        <div className="flex items-start gap-3 min-w-0">
+          <div className="mt-0.5 shrink-0">
+            <Folder
+              size={20}
+              className="text-primary transition-transform duration-200 group-hover:scale-110"
+            />
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <CalendarClock size={14} />
-            <span suppressHydrationWarning>
-              {new Date(createdAt).toLocaleString(undefined, {
-                dateStyle: "medium",
-                timeStyle: "short",
-              })}
-            </span>
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-base font-semibold">{projectName}</h2>
           </div>
-        </CardContent>
-      </Card>
-    </motion.div>
+        </div>
+
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <CalendarClock size={14} className="shrink-0" />
+
+          <span suppressHydrationWarning>
+            {new Date(createdAt).toLocaleString(undefined, {
+              dateStyle: "medium",
+              timeStyle: "short",
+            })}
+          </span>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

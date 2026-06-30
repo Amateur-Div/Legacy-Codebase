@@ -1,191 +1,36 @@
-// "use client";
-
-// import React, { useEffect } from "react";
-// import {
-//   PackageIcon,
-//   LanguagesIcon,
-//   BarChart3Icon,
-//   InfoIcon,
-// } from "lucide-react";
-
-// interface LanguageUsage {
-//   ext: string;
-//   loc: number;
-//   percent: string;
-// }
-
-// interface Insights {
-//   totalLOC: number;
-//   totalFiles: number;
-//   totalFolders: number;
-//   largestFile: {
-//     name: string;
-//     loc: number;
-//   };
-//   topLanguages: LanguageUsage[];
-//   languageUsage: LanguageUsage[];
-// }
-
-// interface Props {
-//   description?: string;
-//   summary?: string;
-//   insights?: Insights;
-//   packageInfo?: Record<string, string | number>;
-//   getLanguageColor: (ext: string) => string;
-// }
-
-// export default function ProjectOverview({
-//   description,
-//   summary,
-//   insights,
-//   packageInfo,
-//   getLanguageColor,
-// }: Props) {
-//   const hasDescription = description || summary;
-//   const hasStats = insights;
-//   const hasLanguages =
-//     insights?.languageUsage && insights.languageUsage.length > 0;
-//   const hasPackageInfo = packageInfo && Object.keys(packageInfo).length > 0;
-
-//   if (!hasDescription && !hasStats && !hasLanguages && !hasPackageInfo)
-//     return null;
-
-//   return (
-//     <div className="bg-muted border shadow-sm rounded-2xl p-6 space-y-6 transition-all duration-300">
-//       {hasDescription && (
-//         <Section title="Overview" icon={<InfoIcon className="w-4 h-4" />}>
-//           {description && (
-//             <p className="text-sm text-muted-foreground">{description}</p>
-//           )}
-//           {summary && (
-//             <p className="text-sm text-muted-foreground mt-1">{summary}</p>
-//           )}
-//         </Section>
-//       )}
-
-//       {hasStats && (
-//         <Section
-//           title="Project Insights"
-//           icon={<BarChart3Icon className="w-4 h-4" />}
-//         >
-//           <ul className="text-sm text-muted-foreground list-disc ml-5 space-y-1">
-//             <li>
-//               Total LOC:{" "}
-//               <span className="font-medium">{insights.totalLOC}</span>
-//             </li>
-//             <li>
-//               Total Files:{" "}
-//               <span className="font-medium">{insights.totalFiles}</span>
-//             </li>
-//             <li>
-//               Total Folders:{" "}
-//               <span className="font-medium">{insights.totalFolders}</span>
-//             </li>
-//             <li>
-//               Largest File:{" "}
-//               <span className="font-medium">{insights.largestFile.name}</span> (
-//               {insights.largestFile.loc} LOC)
-//             </li>
-//           </ul>
-//         </Section>
-//       )}
-
-//       {hasLanguages && (
-//         <Section
-//           title="Language Usage"
-//           icon={<LanguagesIcon className="w-4 h-4" />}
-//         >
-//           <div className="flex w-full overflow-hidden rounded-sm h-2 mb-3 border">
-//             {insights.languageUsage.map((lang, i) => (
-//               <div
-//                 key={i}
-//                 style={{
-//                   width: lang.percent,
-//                   backgroundColor: getLanguageColor(lang.ext),
-//                 }}
-//                 className="transition-all duration-300"
-//               />
-//             ))}
-//           </div>
-//           <ul className="text-sm text-muted-foreground list-disc ml-5 space-y-1">
-//             {insights.languageUsage.map((lang, i) => (
-//               <li key={i} className="flex items-center gap-2">
-//                 <span
-//                   className="inline-block w-3 h-3 rounded-sm"
-//                   style={{ backgroundColor: getLanguageColor(lang.ext) }}
-//                 ></span>
-//                 {lang.ext.toUpperCase()} - {lang.percent}%
-//               </li>
-//             ))}
-//           </ul>
-//         </Section>
-//       )}
-
-//       {hasPackageInfo && (
-//         <Section
-//           title="Package Info"
-//           icon={<PackageIcon className="w-4 h-4" />}
-//         >
-//           <ul className="text-sm text-muted-foreground list-disc ml-5 space-y-1">
-//             {Object.entries(packageInfo).map(([key, value], i) => (
-//               <li key={i}>
-//                 <span className="font-medium">{key}:</span> {String(value)}
-//               </li>
-//             ))}
-//           </ul>
-//         </Section>
-//       )}
-//     </div>
-//   );
-// }
-
-// function Section({
-//   title,
-//   icon,
-//   children,
-// }: {
-//   title: string;
-//   icon: React.ReactNode;
-//   children: React.ReactNode;
-// }) {
-//   return (
-//     <div className="space-y-2">
-//       <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-//         {icon}
-//         <span>{title}</span>
-//       </h3>
-//       <div>{children}</div>
-//     </div>
-//   );
-// }
-
 "use client";
 
 import React from "react";
 import {
   PackageIcon,
-  LanguagesIcon,
   BarChart3Icon,
   InfoIcon,
+  Code2Icon,
+  FileCode2Icon,
   FileTextIcon,
+  ImageIcon,
+  WrenchIcon,
 } from "lucide-react";
 
-interface LanguageUsage {
-  ext: string;
+interface RepositoryComposition {
+  extension: string;
+  category: string;
+  files: number;
   loc: number;
-  percent: string;
+  percent: number;
 }
 
 interface Insights {
   totalLOC: number;
   totalFiles: number;
   totalFolders: number;
+
   largestFile: {
     name: string;
     loc: number;
   };
-  topLanguages: LanguageUsage[];
-  languageUsage: LanguageUsage[];
+
+  repositoryComposition: RepositoryComposition[];
 }
 
 interface Props {
@@ -193,92 +38,164 @@ interface Props {
   summary?: string;
   insights: Insights;
   packageInfo?: Record<string, string | number>;
-  getLanguageColor: (ext: string) => string;
+
+  getLanguageMeta: (ext: string) => {
+    name: string;
+    color: string;
+  };
 }
+
+const CATEGORY_ICONS: Record<string, React.ReactNode> = {
+  code: <Code2Icon className="w-4 h-4" />,
+  docs: <FileTextIcon className="w-4 h-4" />,
+  asset: <ImageIcon className="w-4 h-4" />,
+  config: <WrenchIcon className="w-4 h-4" />,
+  schema: <FileCode2Icon className="w-4 h-4" />,
+  script: <FileCode2Icon className="w-4 h-4" />,
+};
 
 export default function ProjectOverview({
   description,
   summary,
   insights,
   packageInfo,
-  getLanguageColor,
+  getLanguageMeta,
 }: Props) {
   const hasOverview = description || summary;
   const hasInsights = !!insights;
-  const hasLanguages = insights?.languageUsage?.length > 0;
+  const hasComposition = insights?.repositoryComposition?.length > 0;
   const hasPackageInfo = packageInfo && Object.keys(packageInfo).length > 0;
 
-  if (!hasOverview && !hasInsights && !hasLanguages && !hasPackageInfo)
+  if (!hasOverview && !hasInsights && !hasComposition && !hasPackageInfo) {
     return null;
+  }
+
+  const topComposition = insights?.repositoryComposition?.slice(0, 10) || [];
 
   return (
-    <div className="bg-muted border shadow-sm rounded-2xl p-6 space-y-8 transition-all duration-300">
+    <div className="bg-card border border-border/50 shadow-sm rounded-2xl p-6 space-y-8">
       {hasOverview && (
         <Section title="Overview" icon={<InfoIcon className="w-4 h-4" />}>
-          {description && (
-            <p className="text-sm text-muted-foreground">{description}</p>
-          )}
-          {summary && (
-            <p className="text-sm text-muted-foreground mt-1">{summary}</p>
-          )}
+          <div className="space-y-2">
+            {description && (
+              <p className="text-sm leading-6 text-muted-foreground">
+                {description}
+              </p>
+            )}
+
+            {summary && (
+              <p className="text-sm leading-6 text-muted-foreground">
+                {summary}
+              </p>
+            )}
+          </div>
         </Section>
       )}
 
       {hasInsights && (
         <Section
-          title="Project Summary"
+          title="Repository Summary"
           icon={<BarChart3Icon className="w-4 h-4" />}
         >
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm text-muted-foreground">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
             <Stat label="Total Files" value={insights.totalFiles} />
+
             <Stat label="Total Folders" value={insights.totalFolders} />
-            <Stat label="Total LOC" value={insights.totalLOC} />
+
+            <Stat
+              label="Total LOC"
+              value={insights.totalLOC.toLocaleString()}
+            />
+
             <Stat
               label="Largest File"
               value={
-                <span>
-                  {insights.largestFile.name}
-                  <br />
-                  <span className="text-xs text-muted-foreground">
-                    ({insights.largestFile.loc} LOC)
-                  </span>
-                </span>
+                <div className="space-y-1">
+                  <p className="truncate">{insights.largestFile.name}</p>
+
+                  <p className="text-xs text-muted-foreground font-normal">
+                    {insights.largestFile.loc.toLocaleString()} LOC
+                  </p>
+                </div>
               }
             />
           </div>
         </Section>
       )}
 
-      {hasLanguages && (
+      {hasComposition && (
         <Section
-          title="Language Usage"
-          icon={<LanguagesIcon className="w-4 h-4" />}
+          title="Repository Composition"
+          icon={<Code2Icon className="w-4 h-4" />}
         >
-          <div className="rounded overflow-hidden h-2 bg-border mb-3 flex">
-            {insights?.languageUsage.map((lang, i) => (
-              <div
-                key={i}
-                style={{
-                  width: lang.percent,
-                  backgroundColor: getLanguageColor(lang.ext),
-                }}
-                className="transition-all"
-              />
-            ))}
-          </div>
-          <ul className="text-sm text-muted-foreground space-y-1">
-            {insights?.languageUsage.map((lang, i) => (
-              <li key={i} className="flex items-center gap-2">
-                <span
-                  className="w-3 h-3 rounded-sm"
+          <div className="space-y-5">
+            <div className="h-3 rounded-full overflow-hidden bg-muted flex">
+              {topComposition.map((item) => (
+                <div
+                  key={item.extension}
+                  className="transition-all duration-500"
                   style={{
-                    backgroundColor: getLanguageColor(lang.ext),
+                    width: `${item.percent}%`,
+                    backgroundColor: getLanguageMeta(item.extension).color,
                   }}
                 />
-                {lang.ext.toUpperCase()} — {lang.percent}%
-              </li>
-            ))}
-          </ul>
+              ))}
+            </div>
+
+            <div className="space-y-3">
+              {topComposition.map((item) => {
+                const meta = getLanguageMeta(item.extension);
+
+                return (
+                  <div
+                    key={item.extension}
+                    className="flex items-center justify-between gap-4 rounded-xl border bg-background px-4 py-3"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className="w-3 h-3 rounded-sm shrink-0"
+                        style={{
+                          backgroundColor: meta.color,
+                        }}
+                      />
+
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium uppercase">
+                            {item.extension}
+                          </span>
+
+                          <span className="text-muted-foreground">
+                            {CATEGORY_ICONS[item.category] || (
+                              <FileCode2Icon className="w-4 h-4" />
+                            )}
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-muted-foreground capitalize">
+                          {item.category}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-semibold">{item.percent}%</p>
+
+                      <p className="text-xs text-muted-foreground">
+                        {item.files} files
+                      </p>
+
+                      {item.loc > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          {item.loc.toLocaleString()} LOC
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </Section>
       )}
 
@@ -287,10 +204,15 @@ export default function ProjectOverview({
           title="Package Info"
           icon={<PackageIcon className="w-4 h-4" />}
         >
-          <ul className="text-sm text-muted-foreground space-y-1 list-disc ml-5">
+          <ul className="space-y-2">
             {Object.entries(packageInfo).map(([key, value]) => (
-              <li key={key}>
-                <span className="font-medium">{key}:</span> {String(value)}
+              <li
+                key={key}
+                className="flex items-center justify-between rounded-lg border bg-background px-3 py-2"
+              >
+                <span className="text-sm text-muted-foreground">{key}</span>
+
+                <span className="text-sm font-medium">{String(value)}</span>
               </li>
             ))}
           </ul>
@@ -310,21 +232,26 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-2">
-      <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-        {icon}
-        <span>{title}</span>
-      </h3>
-      <div>{children}</div>
-    </div>
+    <section className="space-y-4">
+      <div className="flex items-center gap-2">
+        <div className="text-primary">{icon}</div>
+
+        <h2 className="text-base font-semibold tracking-tight">{title}</h2>
+      </div>
+
+      <div className="rounded-2xl border bg-muted/20 p-4">{children}</div>
+    </section>
   );
 }
 
 function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="border rounded-lg px-3 py-2 bg-background shadow-sm">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="font-semibold text-sm">{value}</p>
+    <div className="rounded-xl border bg-background px-4 py-4">
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+
+      <div className="mt-2 text-lg font-semibold break-words">{value}</div>
     </div>
   );
 }

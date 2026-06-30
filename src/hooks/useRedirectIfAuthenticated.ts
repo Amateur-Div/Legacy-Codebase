@@ -11,7 +11,7 @@ export const useRedirectIfAuthenticated = () => {
 
   useEffect(() => {
     if (!loading && user && user.emailVerified) {
-      router.replace("/dashboard");
+      router.replace("/projects");
     }
   }, [user, loading, router]);
 };

@@ -12,17 +12,26 @@ import ReactFlow, {
   Position,
   MarkerType,
   Node,
-  Edge,
   NodeTypes,
   OnInit,
   ReactFlowInstance,
-  Handle,
 } from "reactflow";
-import dagre from "dagre";
 import "reactflow/dist/style.css";
+import { NODE_H, NODE_W, getDagreGraph } from "../utils/graphLayout";
 import { getAuth } from "firebase/auth";
 import { useProjectPresence } from "../context/ProjectPresenceContext";
 import { FlowGraph } from "@/app/api/lib/analyzer/types";
+import {
+  collectReachable,
+  collectSubgraph,
+  normalizePath,
+  normalizeType,
+} from "../utils/graphHelpers";
+import { typeColors } from "../utils/graphStyles";
+import CustomNode from "./graph/CustomNode";
+import GraphInspectorPanel from "./graph/GraphInspectorPanel";
+import { buildVisualNodes } from "../utils/buildVisualNodes";
+import GraphToolbar from "./graph/GraphToolbar";
 
 type GraphMode = "full" | "disabled";
 
@@ -41,173 +50,23 @@ interface Props {
   }) => void;
   projectId: any;
   id: any;
-  project: any;
 }
 
-const NODE_W = 240;
-const NODE_H = 70;
-
-const tooltipEl =
-  document.getElementById("flow-tooltip") ||
-  (() => {
-    const el = document.createElement("div");
-    el.id = "flow-tooltip";
-    el.style.position = "fixed";
-    el.style.zIndex = "99999";
-    el.style.pointerEvents = "none";
-    el.style.background = "rgba(0,0,0,0.85)";
-    el.style.color = "#fff";
-    el.style.padding = "6px 8px";
-    el.style.borderRadius = "6px";
-    el.style.fontSize = "11px";
-    el.style.maxWidth = "480px";
-    el.style.whiteSpace = "pre-wrap";
-    el.style.display = "none";
-    document.body.appendChild(el);
-    return el;
-  })();
-
-const getDagreGraph = (nodes: Node[], edges: Edge[], direction = "TB") => {
-  const g = new dagre.graphlib.Graph({ multigraph: true });
-  g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: direction, nodesep: 60, ranksep: 90 });
-
-  nodes.forEach((n) => g.setNode(n.id, { width: NODE_W, height: NODE_H }));
-  edges.forEach((e) => {
-    if (e.source && e.target) g.setEdge(e.source as string, e.target as string);
-  });
-
-  dagre.layout(g);
-  return g;
-};
-
-const typeColors: Record<string, string> = {
-  root: "#F3F4F6",
-  function: "#A7F3D0",
-  "fn-entry": "#C7D2FE",
-  if: "#FCA5A5",
-  "if-true": "#FDE68A",
-  "if-false": "#FDE68A",
-  loop: "#93C5FD",
-  "loop-body": "#BFDBFE",
-  "after-loop": "#E0E7FF",
-  statement: "#E5E7EB",
-  error: "#F87171",
-  trycatch: "#E9D5FF",
-};
-
-const baseNodeStyle: React.CSSProperties = {
-  borderRadius: 12,
-  padding: "8px 10px",
-  fontSize: 12,
-  color: "#111827",
-  textAlign: "left",
-  border: "1px solid #ccc",
-  boxShadow: "0 3px 6px rgba(0,0,0,0.08)",
-  overflow: "hidden",
-  whiteSpace: "nowrap",
-  textOverflow: "ellipsis",
-  display: "flex",
-  alignItems: "center",
-  transition: "all 0.25s ease",
-};
-
-const style = document.createElement("style");
-style.innerHTML = `
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-`;
-document.head.appendChild(style);
-
-const CustomNode = ({ data }: any) => {
-  const nodeRef = useRef<HTMLDivElement | null>(null);
-
-  const filterOpacity = data?.fadedByFilter ? 0.15 : 1;
-  const highlightOpacity = data?.fadedByHighlight ? 0.08 : 1;
-
-  const deadOpacity = data?.fadedByDead ? 0.05 : 1;
-  const functionFocusOpacity = data?.fadedByFunctionFocus ? 0.05 : 1;
-  const architectureOpacity = data?.architectureDeadOpacity ?? 1;
-
-  const finalOpacity = Math.min(
-    filterOpacity,
-    highlightOpacity,
-    deadOpacity,
-    functionFocusOpacity,
-    architectureOpacity,
-  );
-
-  const isDead = data?.fadedByDead;
-  const showTooltip = () => {
-    if (!nodeRef.current) return;
-    const rect = nodeRef.current.getBoundingClientRect();
-    tooltipEl.textContent =
-      (data?.raw?.code ?? "No code") +
-      (data?.fadedByDead ? "\n⚠ Dead / unreachable code" : "");
-    tooltipEl.style.left = `${rect.left + rect.width / 2}px`;
-    tooltipEl.style.top = `${rect.bottom + 6}px`;
-    tooltipEl.style.transform = "translateX(-50%)";
-    tooltipEl.style.display = "block";
-  };
-
-  const hideTooltip = () => {
-    setTimeout(() => {
-      tooltipEl.style.display = "none";
-    }, 600);
-  };
-
-  return (
-    <div
-      ref={nodeRef}
-      onMouseEnter={showTooltip}
-      onMouseLeave={hideTooltip}
-      style={{
-        ...baseNodeStyle,
-        background: data?.color || "#fff",
-        width: NODE_W - 24,
-        height: NODE_H - 24,
-        opacity: finalOpacity,
-        border: isDead ? "1px dashed #9CA3AF" : "1px solid #ccc",
-        transform: data?.focused ? "scale(1.08)" : "scale(1)",
-        boxShadow: data?.focused
-          ? "0 0 0 3px rgba(59,130,246,0.6)"
-          : "0 3px 6px rgba(0,0,0,0.08)",
-        cursor: data?.fadedByFilter ? "not-allowed" : "default",
-        pointerEvents: data?.fadedByFilter ? "none" : "auto",
-      }}
-      onMouseOver={(e) =>
-        (e.currentTarget.style.boxShadow = "0 0 10px rgba(59,130,246,0.4)")
-      }
-      onMouseOut={(e) =>
-        (e.currentTarget.style.boxShadow = "0 3px 6px rgba(0,0,0,0.08)")
-      }
-    >
-      <Handle
-        type="target"
-        position={Position.Top}
-        style={{ opacity: 0, pointerEvents: "none" }}
-      />
-
-      <div
-        style={{
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          flex: 1,
-          paddingRight: 6,
-        }}
-      >
-        {data.label}
-      </div>
-
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        style={{ opacity: 0, pointerEvents: "none" }}
-      />
-    </div>
-  );
+const nodeTypes: NodeTypes = {
+  custom: CustomNode,
+  root: CustomNode,
+  file: CustomNode,
+  function: CustomNode,
+  "fn-entry": CustomNode,
+  if: CustomNode,
+  "if-true": CustomNode,
+  "if-false": CustomNode,
+  loop: CustomNode,
+  "loop-body": CustomNode,
+  "after-loop": CustomNode,
+  statement: CustomNode,
+  trycatch: CustomNode,
+  error: CustomNode,
 };
 
 export default function FlowVisualizer({
@@ -215,7 +74,6 @@ export default function FlowVisualizer({
   projectId,
   setGraphData,
   id,
-  project,
   selectedFileNode,
 }: Props) {
   const { users, channelRef, subscribedRef } = useProjectPresence();
@@ -233,40 +91,49 @@ export default function FlowVisualizer({
   const [graphScope, setGraphScope] = useState<"file" | "global">("file");
 
   useEffect(() => {
+    let mounted = true;
+
     const fetchGraphData = async () => {
-      const token = await getAuth().currentUser?.getIdToken();
-      const res = await fetch(`/api/projects/${id}/graph`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      try {
+        const token = await getAuth().currentUser?.getIdToken();
 
-      const data = await res.json();
+        const res = await fetch(`/api/projects/${id}/graph`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
-      console.log(data);
+        const data = await res.json();
 
-      setGraphData(data.graphs?.[0]?.record);
-      setNodeCount(data.graphs?.[0]?.record?.meta?.nodeCount);
-      setEdgeCount(data.graphs?.[0]?.record?.meta?.edgeCount);
+        if (!mounted) return;
+
+        console.log(data.graphs?.[0]?.record);
+
+        setGraphData(data.graphs?.[0]?.record);
+        setNodeCount(data.graphs?.[0]?.record?.meta?.nodeCount);
+        setEdgeCount(data.graphs?.[0]?.record?.meta?.edgeCount);
+      } catch (err) {
+        console.error("Failed to fetch graph", err);
+      }
     };
 
     fetchGraphData();
+
+    return () => {
+      mounted = false;
+    };
+  }, [id, setGraphData]);
+
+  const resetGraphState = useCallback(() => {
+    setHeatmapMode("none");
+    setFilterType(null);
+    setSelectedNode(null);
   }, []);
 
-  useEffect(() => {
-    console.log(graphData);
-
-    console.log(
-      "Import edges : ",
-      graphData.edges.filter((e) => e.label === "imports").length,
-    );
-
-    console.log("Nodes : ", graphData.nodes.length);
-    console.log("edges : ", graphData.edges.length);
-  }, [graphData]);
-
-  const graphMode: GraphMode =
-    nodeCount > 1300 || edgeCount > 2500 ? "disabled" : "full";
+  const graphMode: GraphMode = useMemo(
+    () => (nodeCount > 1300 || edgeCount > 2500 ? "disabled" : "full"),
+    [nodeCount, edgeCount],
+  );
 
   const focusedFunctionId = useMemo(() => {
     if (selectedNode && selectedNode.data?.raw?.type === "function") {
@@ -274,23 +141,6 @@ export default function FlowVisualizer({
     }
     return null;
   }, [selectedNode]);
-
-  function collectSubgraph(start: string, adj: Map<string, string[]>) {
-    const visited = new Set<string>();
-    const queue = [start];
-
-    while (queue.length) {
-      const cur = queue.shift()!;
-      if (visited.has(cur)) continue;
-      visited.add(cur);
-
-      for (const next of adj.get(cur) || []) {
-        queue.push(next);
-      }
-    }
-
-    return visited;
-  }
 
   useEffect(() => {
     const uid = getAuth().currentUser?.uid;
@@ -308,7 +158,7 @@ export default function FlowVisualizer({
     } catch (err) {
       console.error("Graph focus trigger failed", err);
     }
-  }, [selectedNode]);
+  }, [selectedNode, channelRef, subscribedRef]);
 
   const onNodeClick = useCallback((_: any, node: Node) => {
     setSelectedNode(node);
@@ -317,80 +167,6 @@ export default function FlowVisualizer({
   const onPaneClick = useCallback(() => {
     setSelectedNode(null);
   }, []);
-
-  function buildFileNodes(fileTree: any[]) {
-    const nodes: Node[] = [];
-
-    const walk = (items: any[]) => {
-      for (const it of items) {
-        if (it.type === "file") {
-          nodes.push({
-            id: `file::${it.fullPath}`,
-            type: "file",
-            position: { x: 0, y: 0 },
-            data: {
-              label: `📄 ${it.name}`,
-              raw: it,
-              color: "#E5E7EB",
-            },
-          });
-        }
-        if (it.children) walk(it.children);
-      }
-    };
-
-    walk(fileTree);
-    return nodes;
-  }
-
-  function normalizePath(p?: string) {
-    if (!p) return null;
-    return p.replace(/^\/+/, "").replace(/\\/g, "/");
-  }
-
-  function buildFileImportEdges(fileTree: any[]) {
-    const edges: Edge[] = [];
-
-    const walk = (items: any[]) => {
-      for (const it of items) {
-        if (it.type === "file" && it.impact?.imports) {
-          for (const target of it.impact.imports) {
-            edges.push({
-              id: `file::${it.fullPath}->file::${target}`,
-              source: `file::${it.fullPath}`,
-              target: `file::${target}`,
-              label: "imports",
-              style: {
-                stroke: "#9CA3AF",
-                strokeDasharray: "6 4",
-              },
-              markerEnd: { type: MarkerType.ArrowClosed },
-            });
-          }
-        }
-        if (it.children) walk(it.children);
-      }
-    };
-
-    walk(fileTree);
-    return edges;
-  }
-
-  const existingFiles = useMemo(() => {
-    const set = new Set<string>();
-
-    const walk = (nodes: any[]) => {
-      for (const n of nodes) {
-        if (n.type === "file" && n.fullPath) {
-          set.add(normalizePath(n.fullPath)!);
-        }
-        if (n.children) walk(n.children);
-      }
-    };
-
-    walk(project.fileTree);
-    return set;
-  }, [project.fileTree]);
 
   const colorBySemantic = (n: any) => {
     const sem = n.semantic;
@@ -412,20 +188,7 @@ export default function FlowVisualizer({
     return typeColors[n.type] || "#fff";
   };
 
-  function normalizeType(type?: string) {
-    if (!type) return "statement";
-    const t = type.toLowerCase();
-
-    if (t.includes("function")) return "function";
-    if (t.includes("if")) return "if";
-    if (t.includes("loop") || t.includes("for") || t.includes("while"))
-      return "loop";
-    if (t.includes("switch") || t.includes("case")) return "if";
-    if (t.includes("return")) return "statement";
-    return t;
-  }
-
-  const selectedFile = selectedFileNode.fullPath || null;
+  const selectedFile = selectedFileNode?.fullPath || null;
   const isFileView = graphScope === "file";
 
   const scopedGraph = useMemo(() => {
@@ -506,7 +269,7 @@ export default function FlowVisualizer({
         markerEnd: { type: MarkerType.ArrowClosed },
       })),
     };
-  }, [graphData, graphScope, selectedFile]);
+  }, [graphData, graphScope, selectedFile, graphMode]);
 
   const layoutedGraph = useMemo(() => {
     if (graphMode !== "full") {
@@ -549,23 +312,6 @@ export default function FlowVisualizer({
     return collectSubgraph(focusedFunctionId, adjacency.forward);
   }, [focusedFunctionId, adjacency]);
 
-  function collectReachable(start: string, adj: Map<string, string[]>) {
-    const visited = new Set<string>();
-    const q = [start];
-
-    while (q.length) {
-      const cur = q.shift()!;
-      if (visited.has(cur)) continue;
-      visited.add(cur);
-
-      for (const next of adj.get(cur) || []) {
-        if (!visited.has(next)) q.push(next);
-      }
-    }
-
-    return visited;
-  }
-
   const highlightedNodes = useMemo(() => {
     if (!selectedNode) return null;
 
@@ -575,8 +321,12 @@ export default function FlowVisualizer({
     return new Set([...Array.from(forwardSet), ...Array.from(backwardSet)]);
   }, [selectedNode, adjacency]);
 
-  const circularSet = new Set(
-    graphData?.meta?.intelligence?.circularDependencies?.flat() || [],
+  const circularSet = useMemo(
+    () =>
+      new Set(
+        graphData?.meta?.intelligence?.circularDependencies?.flat() || [],
+      ),
+    [graphData],
   );
 
   const maxFileImportance = useMemo(() => {
@@ -588,95 +338,32 @@ export default function FlowVisualizer({
   }, [graphData]);
 
   const visualNodes = useMemo(() => {
-    return layoutedGraph.nodes.map((n) => {
-      const raw = n.data.raw;
-
-      const matchesFilter =
-        !filterType || normalizeType(raw?.type) === filterType;
-
-      const isHighlighted = !selectedNode || highlightedNodes?.has(n.id);
-
-      const isFocused = selectedNode?.id === n.id;
-
-      const isDead = raw?.semantic?.dead == true;
-      const fadedByDead = hideDeadCode && isDead;
-
-      const fadedByFunctionFocus =
-        functionFocusedNodes && !functionFocusedNodes.has(n.id);
-
-      let label: string;
-      let color: string = colorBySemantic(raw);
-
-      if (graphScope == "global" && raw.type === "file") {
-        const name = raw.name?.split("/").pop() ?? "File";
-        label = `📄 File: ${name}`;
-
-        const importance = raw.importanceScore ?? 0;
-
-        if (importance > 5) {
-          color = "#ef4444";
-        } else if (importance > 2) {
-          color = "#f59e0b";
-        } else {
-          color = "#22c55e";
-        }
-      } else if (raw?.type === "root") {
-        label = "🔷 Execution Root";
-      } else if (raw?.type === "function") {
-        label = `🟢 Function: ${raw.name ?? "anonymous"}`;
-      } else {
-        label = (raw?.code ?? raw?.name ?? raw?.type ?? "")
-          .toString()
-          .slice(0, 60);
-      }
-
-      if (
-        graphScope === "global" &&
-        heatmapMode === "none" &&
-        raw.type === "file"
-      ) {
-        const imp = raw.importanceScore ?? 0;
-
-        const ratio = maxFileImportance > 0 ? imp / maxFileImportance : 0;
-
-        if (ratio > 0.75) {
-          color = "#ef4444";
-        } else if (ratio > 0.4) {
-          color = "#f59e0b";
-        } else if (ratio > 0.15) {
-          color = "#22c55e";
-        } else {
-          color = "#94a3b8";
-        }
-      }
-
-      const isDeadFile =
-        graphScope === "global" && raw.type === "file" && raw.deadCode;
-
-      const architectureDeadOpacity = isDeadFile ? 0.1 : 1;
-
-      const isInCycle =
-        graphScope === "global" &&
-        raw.type === "file" &&
-        circularSet.has(raw.id);
-
-      return {
-        ...n,
-        data: {
-          ...n.data,
-          label,
-          color,
-          border: isInCycle ? "3px solid #7c3aed" : "1px solid #ccc",
-          fadedByFilter: !matchesFilter,
-          fadedByHighlight: !isHighlighted,
-          fadedByDead,
-          fadedByFunctionFocus,
-          focused: isFocused,
-          architectureDeadOpacity,
-        },
-      };
+    return buildVisualNodes({
+      nodes: layoutedGraph.nodes,
+      heatmapMode,
+      filterType,
+      selectedNode,
+      highlightedNodes,
+      graphScope,
+      hideDeadCode,
+      functionFocusedNodes,
+      maxFileImportance,
+      circularSet,
+      normalizeType,
+      colorBySemantic,
     });
-  }, [layoutedGraph, heatmapMode, filterType, selectedNode, highlightedNodes]);
+  }, [
+    layoutedGraph,
+    heatmapMode,
+    filterType,
+    selectedNode,
+    highlightedNodes,
+    graphScope,
+    hideDeadCode,
+    functionFocusedNodes,
+    maxFileImportance,
+    circularSet,
+  ]);
 
   const visualEdges = useMemo(() => {
     const hasSelection = !!selectedNode;
@@ -700,25 +387,6 @@ export default function FlowVisualizer({
     });
   }, [layoutedGraph, highlightedNodes, selectedNode]);
 
-  const nodeTypes: NodeTypes = useMemo(
-    () => ({
-      custom: CustomNode,
-      root: CustomNode,
-      file: CustomNode,
-      function: CustomNode,
-      "fn-entry": CustomNode,
-      if: CustomNode,
-      "if-true": CustomNode,
-      "if-false": CustomNode,
-      loop: CustomNode,
-      "loop-body": CustomNode,
-      "after-loop": CustomNode,
-      statement: CustomNode,
-      trycatch: CustomNode,
-      error: CustomNode,
-    }),
-    [],
-  );
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null);
 
   const onInit: OnInit = useCallback((instance: ReactFlowInstance) => {
@@ -729,7 +397,11 @@ export default function FlowVisualizer({
     });
   }, []);
 
-  const zoomToFit = () => rfInstanceRef.current?.fitView({ padding: 0.2 });
+  const zoomToFit = useCallback(() => {
+    rfInstanceRef.current?.fitView({
+      padding: 0.2,
+    });
+  }, []);
 
   useEffect(() => {
     if (explanation) {
@@ -753,7 +425,6 @@ export default function FlowVisualizer({
         body: JSON.stringify({ code }),
       });
       const data = await res.json();
-      console.log(data);
       setExplanation(data?.explanation || "No response");
     } catch (err: any) {
       setExplanation("⚠ Error while fetching explanation: " + err.message);
@@ -793,17 +464,6 @@ export default function FlowVisualizer({
 
   return (
     <div className="mb-6">
-      <div className="flex gap-2">
-        <select
-          value={graphScope}
-          onChange={(e) =>
-            setGraphScope(e.target.value === "global" ? "global" : "file")
-          }
-        >
-          <option value="file">File Level View</option>
-          <option value="global">Architecture View</option>
-        </select>
-      </div>
       <div
         className="flex items-center justify-between px-4 py-2 bg-gray-100 border border-gray-200 rounded-t-xl cursor-pointer select-none"
         onClick={() => setShowVisualizer((v) => !v)}
@@ -824,100 +484,29 @@ export default function FlowVisualizer({
         <div
           style={{
             width: "100%",
-            height: "calc(100vh - 100px)",
-            display: "flex",
-            flexDirection: "column",
             background: "#f9fafb",
             borderRadius: 8,
             overflow: "hidden",
           }}
+          className="flex flex-col h-full min-h-0"
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "8px 12px",
-              background: "#fff",
-              borderBottom: "1px solid #e5e7eb",
-              flexShrink: 0,
-            }}
-          >
-            <select
-              value={heatmapMode}
-              onChange={(e) => setHeatmapMode(e.target.value as any)}
-            >
-              <option value="none">Heatmap: Off</option>
-              <option value="complexity">Heatmap: Complexity</option>
-              <option value="importance">Heatmap: Importance</option>
-            </select>
-
-            <select
-              value={filterType ?? ""}
-              onChange={(e) => setFilterType(e.target.value || null)}
-            >
-              <option value="">Filter: All</option>
-              <option value="function">Functions</option>
-              <option value="if">If / Branch</option>
-              <option value="loop">Loops</option>
-              <option value="statement">Statements</option>
-            </select>
-
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                fontSize: 12,
-                color: "#374151",
-                cursor: "pointer",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={hideDeadCode}
-                onChange={(e) => setHideDeadCode(e.target.checked)}
-              />
-              Hide dead code
-            </label>
-
-            <button
-              title="legend-panel-toggle-button"
-              onClick={() => setShowLegend((s) => !s)}
-              style={{
-                fontSize: 12,
-                padding: "4px 8px",
-                borderRadius: 6,
-                border: "1px solid #D1D5DB",
-                background: "#F9FAFB",
-                cursor: "pointer",
-              }}
-            >
-              {showLegend ? "Hide legend" : "Show legend"}
-            </button>
-
-            <button
-              onClick={() => {
-                setHeatmapMode("none");
-                setFilterType(null);
-                setSelectedNode(null);
-              }}
-              style={{
-                background: "#2563EB",
-                color: "white",
-                border: "none",
-                padding: "4px 10px",
-                borderRadius: 6,
-                cursor: "pointer",
-              }}
-            >
-              Reset
-            </button>
-          </div>
+          <GraphToolbar
+            graphScope={graphScope}
+            setGraphScope={setGraphScope}
+            heatmapMode={heatmapMode}
+            setHeatmapMode={setHeatmapMode}
+            filterType={filterType}
+            setFilterType={setFilterType}
+            hideDeadCode={hideDeadCode}
+            setHideDeadCode={setHideDeadCode}
+            showLegend={showLegend}
+            setShowLegend={setShowLegend}
+            resetGraphState={resetGraphState}
+          />
 
           <div
             id="ai-explanation"
-            style={{ flex: 1, position: "relative", overflow: "hidden" }}
+            className="flex-1 min-h-0 w-full h-full overflow-hidden"
           >
             <ReactFlow
               nodes={visualNodes}
@@ -928,7 +517,7 @@ export default function FlowVisualizer({
               panOnScroll
               zoomOnPinch
               panOnDrag
-              style={{ background: "#ffffff" }}
+              style={{ background: "#ffffff", height: "100%", width: "100%" }}
             >
               <Background color="#e0e0e0" gap={20} />
               {graphMode === "full" && (
@@ -1014,8 +603,8 @@ export default function FlowVisualizer({
               onClick={zoomToFit}
               style={{
                 position: "absolute",
-                bottom: 16,
-                right: 16,
+                bottom: 24,
+                right: 24,
                 background: "#2563EB",
                 color: "white",
                 border: "none",
@@ -1031,113 +620,13 @@ export default function FlowVisualizer({
             </button>
           </div>
 
-          <div
-            style={{
-              height: "30vh",
-              background: "#fff",
-              borderTop: "1px solid #e5e7eb",
-              padding: 12,
-              overflowY: "auto",
-              flexShrink: 0,
-            }}
-          >
-            {selectedNode ? (
-              <>
-                <h3 style={{ margin: 0, fontSize: 15 }}>
-                  {selectedNode.data?.label}
-                </h3>
-                <div style={{ fontSize: 12, color: "#6b7280" }}>
-                  {selectedNode.data?.raw?.file ?? ""} :{" "}
-                  {selectedNode.data?.raw?.line ?? ""}
-                </div>
-                <hr />
-                <div style={{ fontSize: 13 }}>
-                  <b>Complexity:</b>{" "}
-                  {selectedNode.data?.raw?.semantic?.complexity ?? "—"}
-                  <br />
-                  <b>Importance:</b>{" "}
-                  {(
-                    (selectedNode.data?.raw?.semantic?.importance ?? 0) * 100
-                  ).toFixed(0)}
-                  %
-                  <br />
-                  <b>Reachable:</b>{" "}
-                  {selectedNode.data?.raw?.semantic?.dead ? "No" : "Yes"}
-                </div>
-                <hr />
-                <pre
-                  style={{
-                    maxHeight: "18vh",
-                    overflow: "auto",
-                    whiteSpace: "pre-wrap",
-                    fontFamily: "monospace",
-                    fontSize: 12,
-                    background: "#f9fafb",
-                    padding: 6,
-                    borderRadius: 6,
-                  }}
-                >
-                  {selectedNode.data?.raw?.code}
-                </pre>
-              </>
-            ) : (
-              <div style={{ color: "#6b7280", fontSize: 13 }}>
-                Click a node to inspect details
-              </div>
-            )}
-
-            <div
-              style={{
-                borderTop: "1px solid #e5e7eb",
-                marginTop: 8,
-                paddingTop: 8,
-              }}
-            >
-              <button
-                onClick={() => explainNode(selectedNode)}
-                disabled={loadingExplain}
-                style={{
-                  background: "#10B981",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 6,
-                  padding: "6px 12px",
-                  cursor: "pointer",
-                }}
-              >
-                {loadingExplain ? "🧠 Thinking..." : "🧠 Explain this code"}
-              </button>
-
-              {explanation && (
-                <div
-                  style={{
-                    marginTop: 10,
-                    background: "#F3F4F6",
-                    padding: 10,
-                    borderRadius: 8,
-                    fontSize: 13,
-                    whiteSpace: "pre-wrap",
-                    lineHeight: 1.5,
-                    maxHeight: "18vh",
-                    overflowY: "auto",
-                  }}
-                >
-                  {explanation}
-                </div>
-              )}
-
-              {currUsers.length > 0 && (
-                <>
-                  <br />
-                  <span>Currently inspecting this node :</span>
-                  <br />
-                  <div className="p-2 ring-2 text-black ring-blue-400 rounded-lg animate-pulse">
-                    {currUsers[0].email?.split("@")[0] ?? "user"}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
+          <GraphInspectorPanel
+            selectedNode={selectedNode}
+            explanation={explanation}
+            loadingExplain={loadingExplain}
+            explainNode={explainNode}
+            currUsers={currUsers}
+          />
         </div>
       </div>
     </div>

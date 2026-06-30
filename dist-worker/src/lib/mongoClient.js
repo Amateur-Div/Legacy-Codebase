@@ -17,6 +17,28 @@ async function ensureIndexes(db) {
         .collection("project_files")
         .createIndex({ projectId: 1, path: 1 }, { unique: true });
     await db.collection("project_files").createIndex({ projectId: 1 });
+    db.collection("project_files").createIndex({
+        content: "text",
+    }, {
+        default_language: "english",
+        language_override: "none",
+    });
+    db.collection("project_files").createIndex({
+        projectId: 1,
+        "functions.name": 1,
+    });
+    db.collection("project_files").createIndex({
+        projectId: 1,
+        "classes.name": 1,
+    });
+    db.collection("project_files").createIndex({
+        projectId: 1,
+        "exports.name": 1,
+    });
+    db.collection("project_files").createIndex({
+        projectId: 1,
+        "components.name": 1,
+    });
     await db.collection("comments").createIndex({
         projectId: 1,
         filePath: 1,

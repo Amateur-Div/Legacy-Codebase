@@ -4,128 +4,97 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getAuth } from "firebase/auth";
 import { toast } from "sonner";
-import path from "path";
-import DependencyGraph from "@/components/DependencyGraph";
 import ProjectHeader from "../components/ProjectHeader";
 import ProjectFilesPanel from "../components/ProjectFilesPanel";
 import ProjectOverview from "../components/ProjectOverview";
 import FileViewerPanel from "../components/FileViewerPanel";
 import { ProjectPresenceProvider } from "../context/ProjectPresenceContext";
-import { CollaboratorsBar } from "../components/CollaboratorsBar";
-import { useProject } from "@/context/ProjectContext";
+import { generateSummary } from "../utils/markdown";
+import {
+  filterFileTree,
+  findReadmePath,
+  findSelectedFileNode,
+} from "../utils/fileTree";
+import { useProjectPolling } from "@/hooks/useProjectPolling";
+import { useProjectData } from "@/hooks/useProjectData";
+import { useFileHandler } from "@/hooks/useFileHandler";
+import { getLanguage } from "../utils/language";
+import ProjectWorkspaceTabs from "../components/ProjectWorkspaceTabs";
+import APIsWorkspace from "../components/APIsWorkspace";
+import ArchitectureWorkspace from "../components/ArchitectureWorkspace";
+import { FlowGraph } from "@/app/api/lib/analyzer/types";
 
 export default function ProjectDetailPage() {
   const router = useRouter();
   const { id: projectId } = useParams() as { id: string };
-  const { project, setProject } = useProject();
 
-  const [fileContent, setFileContent] = useState("");
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const { project, setProject, isLoaded } = useProjectData(projectId);
+  const { selectedPath, setSelectedPath, fileContent, handleFileClick } =
+    useFileHandler(project?.projectId);
   const [readmeContent, setReadmeContent] = useState<string | null>(null);
   const [editingName, setEditingName] = useState(false);
-  const [newName, setNewName] = useState(project?.projectName || "");
-  const [projectData, setProjectData] = useState(false);
+  const [newName, setNewName] = useState("");
   const [tagInput, setTagInput] = useState("");
-  const [filteredFileTree, setFilteredFileTree] = useState<any[]>([]);
   const [tags, setTags] = useState<string[] | []>([]);
   const [insights, setInsights] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [graphData, setGraphData] = useState<FlowGraph>({
+    nodes: [],
+    edges: [],
+  });
   const [readmeSummary, setReadmeSummary] = useState("");
   const [line, setLine] = useState<number | null>(null);
-  const [jobStatus, setJobStatus] = useState<
-    "idle" | "running" | "done" | "error"
-  >("idle");
-  const [jobProgress, setJobProgress] = useState(0);
-  const [jobMessage, setJobMessage] = useState("");
-  const [graphReady, setGraphReady] = useState(false);
+  const { jobStatus, jobProgress, jobMessage, graphReady } = useProjectPolling(
+    project?.projectId,
+  );
+  const [activeView, setActiveView] = useState<
+    "overview" | "explorer" | "architecture" | "apis"
+  >("overview");
 
   useEffect(() => {
-    const loadProject = async () => {
-      const token = await getAuth().currentUser?.getIdToken();
+    if (!graphReady || !projectId) return;
 
-      const res = await fetch(`/api/project?id=${projectId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (data) {
-        setProjectData(true);
-      }
-
-      setProject(data);
-    };
-    loadProject();
-  }, [projectId]);
-
-  useEffect(() => {
-    const pollJob = async () => {
-      const token = await getAuth().currentUser?.getIdToken();
-      if (!token) return;
-
-      const res = await fetch(`/api/project?id=${projectId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!res.ok) {
-        return;
-      }
-
-      const project = await res.json();
-
+    const refreshProject = async () => {
       try {
-        const res = await fetch(
-          `/api/projects/${project.projectId}/latest-job?token=${encodeURIComponent(token)}`,
-        );
+        const token = await getAuth().currentUser?.getIdToken();
+
+        const res = await fetch(`/api/project?id=${projectId}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
         if (!res.ok) return;
 
-        const job = await res.json();
+        const updatedProject = await res.json();
 
-        if (!job) {
-          setJobStatus("done");
-          setGraphReady(true);
-          return true;
-        }
-
-        setJobStatus(job.status);
-        setJobProgress(job.progress || 0);
-        setJobMessage(job.message || "Processing...");
-
-        if (job.status === "done") {
-          setGraphReady(true);
-          return true;
-        }
-
-        if (job.status === "error") {
-          setJobStatus("error");
-          return true;
-        }
+        setProject(updatedProject);
       } catch (err) {
-        console.error("Polling error", err);
+        console.error("Failed to refresh project:", err);
       }
-
-      return false;
     };
 
-    const interval = setInterval(async () => {
-      const done = await pollJob();
-      if (done) clearInterval(interval);
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [projectId]);
+    refreshProject();
+  }, [graphReady, projectId, setProject]);
 
   useEffect(() => {
-    if (!graphReady || !projectData || !project) {
+    if (project?.projectName) {
+      setNewName(project.projectName);
+    }
+    console.log(project);
+  }, [project]);
+
+  useEffect(() => {
+    if (!graphReady || !isLoaded || !project) {
       return;
     }
 
     const getReadMeData = async () => {
       let readmePath;
-      if (projectData) {
+      if (isLoaded) {
         readmePath = findReadmePath(project.fileTree);
-        const insights = calculateInsights(project.fileTree);
-        setInsights(insights);
         setTags(project.tags);
+        setInsights(project.insights);
       }
 
       if (readmePath) {
@@ -135,108 +104,14 @@ export default function ProjectDetailPage() {
           }&filePath=${encodeURIComponent(readmePath)}`,
         );
         const contentData = await contentRes.json();
-        setReadmeContent(contentData.content);
+
+        const content = contentData.content;
+        setReadmeContent(content);
+        setReadmeSummary(generateSummary(content));
       }
     };
     getReadMeData();
-  }, [graphReady, projectData, project]);
-
-  useEffect(() => {
-    if (!graphReady || !project) return;
-
-    const readmeNode = project.fileTree?.find(
-      (file: any) => file.name.toLowerCase() === "readme.md",
-    );
-
-    if (readmeNode) {
-      fetch(
-        `/api/project/file?projectId=${project.projectId}&filePath=${readmeNode.fullPath}`,
-      )
-        .then((res) => res.text())
-        .then((content) => {
-          setReadmeContent(content);
-          setReadmeSummary(generateSummary(content));
-        });
-    }
-  }, [graphReady, project]);
-
-  function generateSummary(md: string): string {
-    const lines = md.split("\n").filter(Boolean);
-    const firstLines = lines.slice(0, 5);
-
-    return (
-      firstLines
-        .map((line) => line.replace(/^#+\s*/, "").trim())
-        .join(" ")
-        .slice(0, 300) + "..."
-    );
-  }
-
-  function findReadmePath(tree: any[]): string | null {
-    if (!tree) {
-      return null;
-    }
-    for (const node of tree) {
-      if (node.type === "file" && node.name.toLowerCase() === "\\readme.md") {
-        return node.fullPath;
-      } else if (node.type === "folder" && node.children) {
-        const found = findReadmePath(node.children);
-        if (found) return found;
-      }
-    }
-    return null;
-  }
-
-  function buildDependencyGraph(tree: any[]): {
-    nodes: string[];
-    edges: [string, string][];
-  } {
-    const nodes: string[] = [];
-    const edges: [string, string][] = [];
-
-    const walk = (nodeList: any[], base = "") => {
-      for (const node of nodeList) {
-        if (node.type === "file") {
-          const fullPath = node.fullPath;
-          nodes.push(fullPath);
-
-          for (const imp of node.imports || []) {
-            if (imp?.name.startsWith(".")) {
-              const resolvedPath = path
-                .join(path.dirname(fullPath), imp.name)
-                .replace(/\\/g, "/");
-              edges.push([fullPath, resolvedPath]);
-            }
-          }
-        } else if (node.children) {
-          walk(node.children, base);
-        }
-      }
-    };
-
-    walk(tree);
-    return { nodes, edges };
-  }
-
-  const graph =
-    graphReady && project?.fileTree && buildDependencyGraph(project.fileTree);
-  const nodesData = graph
-    ? graph?.nodes.map((id: any) => ({
-        id,
-        data: { label: id.split("/").pop() },
-        position: { x: Math.random() * 600, y: Math.random() * 600 },
-        type: "default",
-      }))
-    : [];
-
-  const edgesData = graph
-    ? graph?.edges.map(([from, to]: any, i: any) => ({
-        id: `e${i}`,
-        source: from,
-        target: to,
-        type: "smoothstep",
-      }))
-    : [];
+  }, [graphReady, isLoaded, project]);
 
   const handleDelete = async () => {
     const confirmDelete = window.confirm(
@@ -278,165 +153,10 @@ export default function ProjectDetailPage() {
     }
   };
 
-  function calculateInsights(tree: any[]) {
-    let totalLOC = 0;
-    let totalFiles = 0;
-    let totalFolders = 0;
-    let largestFile = { name: "", loc: 0 };
-    const languageMap: Record<string, number> = {};
-
-    const walk = (nodes: any[]) => {
-      for (const node of nodes) {
-        if (node.type === "file") {
-          totalFiles++;
-          totalLOC += node.loc || 0;
-
-          const ext = node.name.split(".").pop()?.toLowerCase();
-          if (ext) languageMap[ext] = (languageMap[ext] || 0) + (node.loc || 0);
-
-          if ((node.loc || 0) > largestFile.loc) {
-            largestFile = { name: node.name, loc: node.loc };
-          }
-        } else if (node.type === "folder" && node.children) {
-          totalFolders++;
-          walk(node.children);
-        }
-      }
-    };
-
-    walk(tree);
-
-    const sortedLangs = Object.entries(languageMap)
-      .sort((a, b) => b[1] - a[1])
-      .map(([ext, loc]) => ({ ext, loc }));
-
-    return {
-      totalLOC,
-      totalFiles,
-      totalFolders,
-      largestFile,
-      topLanguages: sortedLangs,
-      languageUsage: sortedLangs.map(({ ext, loc }) => ({
-        ext,
-        loc,
-        percent: ((loc / totalLOC) * 100).toFixed(1),
-      })),
-    };
-  }
-
-  function detectLanguage(filePath: string = "") {
-    const ext = filePath.split(".").pop()?.toLowerCase();
-
-    switch (ext) {
-      case "js":
-      case "jsx":
-        return "javascript";
-      case "ts":
-      case "tsx":
-        return "typescript";
-      case "html":
-        return "html";
-      case "css":
-        return "css";
-      case "json":
-        return "json";
-      case "md":
-        return "markdown";
-      case "py":
-        return "python";
-      case "java":
-        return "java";
-      case "cpp":
-        return "cpp";
-      default:
-        return "text";
-    }
-  }
-
-  const handleFileClick = async (path: string) => {
-    setSelectedPath(path);
-    if (!path.split("\\").pop()?.includes(".")) return;
-
-    const token = await getAuth().currentUser?.getIdToken();
-
-    const res = await fetch(
-      `/api/projects/${project.projectId}/file-content?path=${encodeURIComponent(path)}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    );
-
-    const data = await res.json();
-
-    console.log("File data : ", data);
-
-    setFileContent(data.content || "Unable to load file.");
-  };
-
-  function filterFileTree(tree: any[], query: string): any[] {
-    if (!query) return tree;
-
-    const matchesQuery = (name: string) =>
-      name.toLowerCase().includes(query.toLowerCase());
-
-    return tree
-      .map((node) => {
-        if (node.type === "file" && matchesQuery(node.name)) {
-          return node;
-        }
-        if (node.type === "folder" && node.children) {
-          const filteredChildren = filterFileTree(node.children, query);
-          if (filteredChildren.length > 0) {
-            return { ...node, children: filteredChildren };
-          }
-        }
-        return null;
-      })
-      .filter(Boolean);
-  }
-
-  function getLanguageColor(ext: string) {
-    const colors: Record<string, string> = {
-      js: "#f1e05a",
-      ts: "#3178c6",
-      jsx: "#61dafb",
-      tsx: "#3178c6",
-      py: "#3572A5",
-      java: "#b07219",
-      cpp: "#f34b7d",
-      html: "#e34c26",
-      css: "#563d7c",
-      scss: "#c6538c",
-      json: "#292929",
-      md: "#083fa1",
-      txt: "#777777",
-      default: "#ccc",
-    };
-
-    return colors[ext.toLowerCase()] || colors.default;
-  }
-
-  function findSelectedFileNode(tree: any[]): any | null {
-    if (!tree) {
-      return null;
-    }
-
-    for (const node of tree) {
-      if (node.type === "file" && node.fullPath === selectedPath) {
-        return node;
-      } else if (node.type === "folder" && node.children) {
-        const found = findSelectedFileNode(node.children);
-        if (found) return found;
-      }
-    }
-    return null;
-  }
-
   const selectedFileNode = useMemo(() => {
-    if (projectData) return findSelectedFileNode(project.fileTree);
-  }, [projectData, selectedPath]);
+    if (isLoaded && selectedPath)
+      return findSelectedFileNode(project.fileTree, selectedPath);
+  }, [isLoaded, selectedPath, project]);
 
   if (!project) {
     return (
@@ -491,7 +211,7 @@ export default function ProjectDetailPage() {
     : [];
 
   return (
-    <div className="p-6 space-y-6 flex flex-col h-full w-full overflow-auto animate-fade-in">
+    <div className="p-6 space-y-6 min-h-screen">
       <ProjectPresenceProvider projectId={projectId}>
         <ProjectHeader
           projectName={project.projectName}
@@ -507,52 +227,73 @@ export default function ProjectDetailPage() {
           setTags={setTags}
           handleDelete={handleDelete}
         />
-        <ProjectOverview
-          summary={readmeSummary}
-          insights={insights}
-          packageInfo={project?.packageInfo}
-          getLanguageColor={getLanguageColor}
+
+        <ProjectWorkspaceTabs
+          activeView={activeView}
+          setActiveView={setActiveView}
         />
 
-        <div className="bg-card border rounded-xl p-4 shadow-sm">
-          <h3 className="text-sm font-medium mb-2 text-muted-foreground">
-            Dependency Graph
-          </h3>
-          <DependencyGraph nodesData={nodesData} edgesData={edgesData} />
-        </div>
+        {activeView === "overview" && (
+          <div className="space-y-8">
+            <div className="col-span-12 lg:col-span-4">
+              <ProjectOverview
+                summary={readmeSummary}
+                insights={insights}
+                packageInfo={project?.packageInfo}
+                getLanguageMeta={getLanguage}
+              />
+            </div>
+          </div>
+        )}
 
-        <CollaboratorsBar />
+        {activeView === "explorer" && (
+          <div className="grid grid-cols-12 gap-6 items-stretch min-h-[900px]">
+            <div className="col-span-12 lg:col-span-5 flex">
+              <ProjectFilesPanel
+                project={project}
+                setLine={setLine}
+                handleFileClick={handleFileClick}
+                fileTree={filteredTree}
+                setSelectedPath={setSelectedPath}
+                searchTerm={searchTerm}
+                setSearchTerm={setSearchTerm}
+                entryPoints={project?.entryPoints || []}
+                selectedPath={selectedPath}
+              />
+            </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <ProjectFilesPanel
-            project={project}
-            setLine={setLine}
-            handleFileClick={handleFileClick}
-            fileTree={filteredTree}
-            setSelectedPath={setSelectedPath}
-            searchTerm={searchTerm}
-            setSearchTerm={setSearchTerm}
-            entryPoints={project?.entryPoints || []}
-            selectedPath={selectedPath}
-          />
+            <div className="col-span-12 lg:col-span-7 flex">
+              <FileViewerPanel
+                projectId={project._id}
+                project={project}
+                graphData={graphData}
+                setGraphData={setGraphData}
+                setProject={setProject}
+                fileTree={filteredTree || project.fileTree}
+                selectedPath={selectedPath}
+                setSelectedPath={setSelectedPath}
+                fileContent={fileContent}
+                lineNumber={line}
+                selectedFileNode={selectedFileNode}
+                readmeContent={readmeContent}
+                readmeSummary={readmeSummary}
+                getLanguageMeta={getLanguage}
+              />
+            </div>
+          </div>
+        )}
 
-          <FileViewerPanel
-            projectId={project._id}
-            project={project}
-            handleFileClick={handleFileClick}
-            setProject={setProject}
-            fileTree={filteredTree || project.fileTree}
-            setFilteredFileTree={setFilteredFileTree}
-            selectedPath={selectedPath}
-            setSelectedPath={setSelectedPath}
-            fileContent={fileContent}
-            lineNumber={line}
-            selectedFileNode={selectedFileNode}
-            readmeContent={readmeContent}
-            readmeSummary={readmeSummary}
-            detectLanguage={detectLanguage}
-          />
-        </div>
+        <ArchitectureWorkspace
+          graphData={graphData}
+          setGraphData={setGraphData}
+          projectId={projectId}
+          project={project}
+          selectedFileNode={selectedFileNode}
+        />
+
+        {activeView === "apis" && (
+          <APIsWorkspace fileTree={project?.fileTree} />
+        )}
       </ProjectPresenceProvider>
     </div>
   );

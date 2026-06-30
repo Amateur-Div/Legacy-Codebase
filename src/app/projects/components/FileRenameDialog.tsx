@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +23,13 @@ export default function RenameFileDialog({
 }) {
   const [newName, setNewName] = useState("");
 
+  useEffect(() => {
+    if (open) {
+      const currentName = oldPath.split("/").pop() || "";
+      setNewName(currentName);
+    }
+  }, [open, oldPath]);
+
   const handleRename = () => {
     if (!newName.trim()) return;
     onRename(newName.trim());
@@ -32,9 +39,10 @@ export default function RenameFileDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Rename File</DialogTitle>
+          <p className="text-xs text-muted-foreground break-all">{oldPath}</p>
         </DialogHeader>
         <div className="space-y-4">
           <Input
@@ -46,7 +54,9 @@ export default function RenameFileDialog({
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button onClick={handleRename}>Rename</Button>
+            <Button onClick={handleRename} disabled={!newName.trim()}>
+              Rename
+            </Button>
           </div>
         </div>
       </DialogContent>

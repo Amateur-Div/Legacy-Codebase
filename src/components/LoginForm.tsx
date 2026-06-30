@@ -79,7 +79,7 @@ export default function LoginPage() {
       const userCredential = await signInWithEmailAndPassword(
         auth,
         data.email,
-        data.password
+        data.password,
       );
 
       if (!userCredential.user.emailVerified) {
@@ -89,7 +89,7 @@ export default function LoginPage() {
       }
 
       toast.success("Logged in successfully!");
-      router.replace("/dashboard");
+      router.replace("/projects");
     } catch (err: any) {
       const error = setFirebaseError(err);
       toast.error(error || "Login failed.");

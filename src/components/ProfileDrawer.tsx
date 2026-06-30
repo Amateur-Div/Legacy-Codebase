@@ -63,10 +63,9 @@ export default function ProfileDrawer({ user, onClose }: ProfileDrawerProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [photoURL, setPhotoURL] = useState(user.photoURL || "");
-  const [isProfile, setIsProfile] = useState(true);
+  const [showSkeleton, setShowSkelet] = useState(true);
   const [name, setName] = useState(user.name || "");
   const [originalName, setOriginalName] = useState(user.name || "");
-  const [changeName, setChangeName] = useState(false);
 
   const [bio, setBio] = useState(user.bio || "");
   const [originalBio, setOriginalBio] = useState(user.bio || "");
@@ -78,10 +77,13 @@ export default function ProfileDrawer({ user, onClose }: ProfileDrawerProps) {
   const [animateIn, setAnimateIn] = useState(false);
   const [closing, setClosing] = useState(false);
 
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
   const creationDate = useMemo(() => {
     if (!auth.currentUser?.metadata?.creationTime) return null;
     return new Date(
-      auth.currentUser.metadata.creationTime
+      auth.currentUser.metadata.creationTime,
     ).toLocaleDateString();
   }, [auth.currentUser]);
 
@@ -107,7 +109,7 @@ export default function ProfileDrawer({ user, onClose }: ProfileDrawerProps) {
         {
           method: "POST",
           body: data,
-        }
+        },
       );
 
       const imgURL = (await res.json()).secure_url;
@@ -150,12 +152,22 @@ export default function ProfileDrawer({ user, onClose }: ProfileDrawerProps) {
   };
 
   const handleLogout = async () => {
-    toast.loading("Logging out...");
-    await auth.signOut();
-    router.replace("/login");
+    setIsLoggingOut(true);
+
+    try {
+      toast.loading("Logging out...");
+      await auth.signOut();
+      router.replace("/login");
+    } catch (error) {
+      toast.error("Error");
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   const handleDeleteAccount = async () => {
+    setIsDeleting(true);
+
     try {
       await deleteDoc(doc(db, "users", user.uid));
       await deleteUser(auth.currentUser!);
@@ -169,6 +181,8 @@ export default function ProfileDrawer({ user, onClose }: ProfileDrawerProps) {
         toast.error("Failed to delete account.");
         console.error("Delete error:", err);
       }
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -176,13 +190,25 @@ export default function ProfileDrawer({ user, onClose }: ProfileDrawerProps) {
     const timer = setTimeout(() => setAnimateIn(true), 10);
 
     const setFallBackProfile = setTimeout(() => {
-      setIsProfile(false);
+      setShowSkelet(false);
     }, 10000);
 
     return () => {
-      clearTimeout(timer), clearTimeout(setFallBackProfile);
+      clearTimeout(timer);
+      clearTimeout(setFallBackProfile);
     };
   }, []);
+
+  const handleResendVerification = async () => {
+    if (!auth.currentUser) return;
+
+    try {
+      await sendEmailVerification(auth.currentUser);
+      toast.success("Verification email sent!");
+    } catch (err) {
+      toast.error("Failed to send verification email.");
+    }
+  };
 
   const handleClose = () => {
     setClosing(true);
@@ -193,7 +219,7 @@ export default function ProfileDrawer({ user, onClose }: ProfileDrawerProps) {
     <div
       className={cn(
         "fixed top-0 left-0 h-full w-[90vw] md:w-80 max-w-sm text-foreground bg-white dark:bg-zinc-900 text-black dark:text-white border-r border-border shadow-xl z-[9999] p-6 flex flex-col transition-transform duration-300 ease-in-out overflow-y-auto scrollbar-thin scrollbar-thumb-muted-foreground/30 scrollbar-thumb-rounded-md",
-        animateIn && !closing ? "translate-x-0" : "-translate-x-full"
+        animateIn && !closing ? "translate-x-0" : "-translate-x-full",
       )}
     >
       {" "}
@@ -215,7 +241,7 @@ export default function ProfileDrawer({ user, onClose }: ProfileDrawerProps) {
               loading="lazy"
             />
             <AvatarFallback className="bg-gray-200">
-              {isProfile ? (
+              {showSkeleton ? (
                 <Skeleton className="h-16 w-16 rounded-full bg-gray-300" />
               ) : (
                 <UserIcon size={27} />
@@ -257,12 +283,7 @@ export default function ProfileDrawer({ user, onClose }: ProfileDrawerProps) {
             <Button
               variant="ghost"
               className="px-0 h-6 text-xs text-blue-600 hover:bg-blue-50 dark:hover:bg-zinc-800 hover:underline"
-              onClick={async () => {
-                if (auth.currentUser) {
-                  await sendEmailVerification(auth.currentUser);
-                  toast.success("Verification email sent!");
-                }
-              }}
+              onClick={() => handleResendVerification()}
             >
               Resend verification email
             </Button>
@@ -288,11 +309,7 @@ export default function ProfileDrawer({ user, onClose }: ProfileDrawerProps) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             onBlur={handleSave}
-            disabled={!changeName}
           />
-          <Button variant="outline" onClick={() => setChangeName(!changeName)}>
-            {changeName ? "Save" : <Pencil size={12} />}
-          </Button>
         </div>
         {success && (
           <div className="flex items-center gap-2 mt-1 text-green-600">
@@ -327,24 +344,31 @@ export default function ProfileDrawer({ user, onClose }: ProfileDrawerProps) {
 
         <div>
           <Label className="text-sm mb-2 block">Theme</Label>
+
           <div className="flex gap-2">
-            {["light", "dark", "system"].map((t) => (
+            {[
+              {
+                key: "light",
+                icon: Sun,
+              },
+              {
+                key: "dark",
+                icon: Moon,
+              },
+              {
+                key: "system",
+                icon: Laptop2,
+              },
+            ].map(({ key, icon: Icon }) => (
               <Button
-                className={`border-b border-gray-500 ${
-                  theme == t ? "rounded-sm" : "rounded-full"
-                }`}
-                key={t}
-                onClick={() => setTheme(t)}
-                variant={theme === t ? "default" : "outline"}
+                key={key}
+                type="button"
+                variant={theme === key ? "default" : "outline"}
                 size="icon"
+                onClick={() => setTheme(key)}
+                className="rounded-xl"
               >
-                {t === "light" ? (
-                  <Sun size={18} />
-                ) : t === "dark" ? (
-                  <Moon size={18} />
-                ) : (
-                  <Laptop2 size={18} />
-                )}
+                <Icon size={16} />
               </Button>
             ))}
           </div>
@@ -358,7 +382,12 @@ export default function ProfileDrawer({ user, onClose }: ProfileDrawerProps) {
         </Button>
       </div>
       <div className="mt-auto pt-6 space-y-2 space-x-4">
-        <Button variant="outline" className="w-24" onClick={handleLogout}>
+        <Button
+          variant="outline"
+          className="w-24"
+          onClick={handleLogout}
+          disabled={isDeleting}
+        >
           <LogOut size={14} className="mr-2" />
           Logout
         </Button>
@@ -367,6 +396,7 @@ export default function ProfileDrawer({ user, onClose }: ProfileDrawerProps) {
             <Button
               variant="outline"
               className="w-36 hover:bg-red-600 hover:text-white"
+              disabled={isLoggingOut}
             >
               <Trash2 size={14} className="mr-2" />
               Delete Account

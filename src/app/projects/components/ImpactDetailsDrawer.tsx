@@ -1,10 +1,14 @@
 "use client";
 
+import { useMemo } from "react";
 import type { FlowGraph } from "@/app/api/lib/analyzer/types";
+
 import {
   findApiImpactFromFile,
   findFileImpact,
 } from "@/app/api/lib/impactEngine";
+
+import { AlertTriangle, FileCode2, Network, PlugZap, X } from "lucide-react";
 
 type Props = {
   graph: FlowGraph;
@@ -13,63 +17,164 @@ type Props = {
 };
 
 export function ImpactDetailsDrawer({ graph, fileId, onClose }: Props) {
-  const impactedFiles = findFileImpact(graph, fileId);
-  const impactedApis = findApiImpactFromFile(graph, fileId);
+  const impactedFiles = useMemo(
+    () => findFileImpact(graph, fileId).filter((f) => f !== fileId),
+    [graph, fileId],
+  );
 
-  const importance =
-    graph.meta?.intelligence?.importanceRanking?.find(
-      (f) => f.fileId === fileId,
-    )?.score || 0;
+  const impactedApis = useMemo(
+    () => findApiImpactFromFile(graph, fileId),
+    [graph, fileId],
+  );
 
-  const isInCycle =
-    graph.meta?.intelligence?.circularDependencies?.some((cycle) =>
-      cycle.includes(fileId),
-    ) || false;
+  const importance = useMemo(
+    () =>
+      graph.meta?.intelligence?.importanceRanking?.find(
+        (f) => f.fileId === fileId,
+      )?.score || 0,
+    [graph, fileId],
+  );
+
+  const isInCycle = useMemo(
+    () =>
+      graph.meta?.intelligence?.circularDependencies?.some((cycle) =>
+        cycle.includes(fileId),
+      ) || false,
+    [graph, fileId],
+  );
+
+  const cleanFileName = fileId.replace(/^file::/, "");
 
   return (
-    <div className="fixed right-0 top-0 h-full w-96 bg-white shadow-2xl border-l z-50 p-6 overflow-y-auto">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-semibold">Impact Details</h2>
-        <button onClick={onClose} className="text-sm text-gray-500">
-          Close
-        </button>
+    <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-[420px] border-l bg-background shadow-2xl">
+      <div className="flex h-full flex-col">
+        <div className="flex items-start justify-between border-b px-6 py-5">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold">Impact Details</h2>
+
+            <p className="text-xs text-muted-foreground break-all">
+              {cleanFileName}
+            </p>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="rounded-md p-2 hover:bg-muted transition-colors"
+          >
+            <X className="h-4 w-4 text-muted-foreground" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          <div className="grid grid-cols-2 gap-3">
+            <InfoCard
+              icon={<Network className="h-4 w-4" />}
+              label="Importance"
+              value={importance}
+            />
+
+            <InfoCard
+              icon={<AlertTriangle className="h-4 w-4" />}
+              label="Circular"
+              value={isInCycle ? "Yes" : "No"}
+            />
+          </div>
+
+          <SectionCard
+            title="Impacted Files"
+            icon={<FileCode2 className="h-4 w-4" />}
+          >
+            {impactedFiles.length === 0 ? (
+              <EmptyState text="No impacted files found" />
+            ) : (
+              <ul className="space-y-2">
+                {impactedFiles.map((file) => (
+                  <li
+                    key={file}
+                    className="rounded-lg border bg-muted/30 px-3 py-2 text-sm break-all"
+                  >
+                    {file.replace(/^file::/, "")}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="Impacted APIs"
+            icon={<PlugZap className="h-4 w-4" />}
+          >
+            {impactedApis.length === 0 ? (
+              <EmptyState text="No impacted APIs found" />
+            ) : (
+              <ul className="space-y-2">
+                {impactedApis.map((api) => (
+                  <li
+                    key={api}
+                    className="rounded-lg border bg-muted/30 px-3 py-2 text-sm break-all"
+                  >
+                    {api}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </SectionCard>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoCard({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border bg-card p-4 shadow-sm">
+      <div className="flex items-center gap-2 text-muted-foreground mb-2">
+        {icon}
+
+        <span className="text-xs font-medium uppercase tracking-wide">
+          {label}
+        </span>
       </div>
 
-      <div className="space-y-4 text-sm">
-        <div>
-          <span className="font-semibold">File:</span>
-          <div className="break-all">{fileId.replace(/^file::/, "")}</div>
-        </div>
+      <div className="text-lg font-semibold">{value}</div>
+    </div>
+  );
+}
 
-        <div>
-          <span className="font-semibold">Importance Score:</span> {importance}
-        </div>
+function SectionCard({
+  title,
+  icon,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border bg-card p-4 shadow-sm space-y-4">
+      <div className="flex items-center gap-2">
+        {icon}
 
-        <div>
-          <span className="font-semibold">Circular Involvement:</span>{" "}
-          {isInCycle ? "Yes ⚠" : "No"}
-        </div>
-
-        <div>
-          <span className="font-semibold">Impacted Files:</span>
-          <ul className="list-disc pl-5 mt-2">
-            {impactedFiles
-              .filter((f) => f !== fileId)
-              .map((f) => (
-                <li key={f}>{f.replace(/^file::/, "")}</li>
-              ))}
-          </ul>
-        </div>
-
-        <div>
-          <span className="font-semibold">Impacted APIs:</span>
-          <ul className="list-disc pl-5 mt-2">
-            {impactedApis.map((a) => (
-              <li key={a}>{a}</li>
-            ))}
-          </ul>
-        </div>
+        <h3 className="font-semibold text-sm">{title}</h3>
       </div>
+
+      {children}
+    </div>
+  );
+}
+
+function EmptyState({ text }: { text: string }) {
+  return (
+    <div className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+      {text}
     </div>
   );
 }

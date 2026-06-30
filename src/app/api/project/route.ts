@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
       _id: project._id.toString(),
       projectName: project.projectName,
       fileTree: project.fileTree,
+      insights: project.insights,
       members: project.members,
       projectId: project.projectId,
       packageInfo: project.packageInfo,

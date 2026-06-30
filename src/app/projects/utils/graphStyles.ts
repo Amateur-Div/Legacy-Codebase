@@ -1,0 +1,30 @@
+export const typeColors: Record<string, string> = {
+  root: "#F3F4F6",
+  function: "#A7F3D0",
+  "fn-entry": "#C7D2FE",
+  if: "#FCA5A5",
+  "if-true": "#FDE68A",
+  "if-false": "#FDE68A",
+  loop: "#93C5FD",
+  "loop-body": "#BFDBFE",
+  "after-loop": "#E0E7FF",
+  statement: "#E5E7EB",
+  error: "#F87171",
+  trycatch: "#E9D5FF",
+};
+
+export const baseNodeStyle: React.CSSProperties = {
+  borderRadius: 12,
+  padding: "8px 10px",
+  fontSize: 12,
+  color: "#111827",
+  textAlign: "left",
+  border: "1px solid #ccc",
+  boxShadow: "0 3px 6px rgba(0,0,0,0.08)",
+  overflow: "hidden",
+  whiteSpace: "nowrap",
+  textOverflow: "ellipsis",
+  display: "flex",
+  alignItems: "center",
+  transition: "all 0.25s ease",
+};

@@ -135,6 +135,7 @@ async function runJobStep(job) {
         const root = path_1.default.join(job.extractedPath, "repo");
         const allFiles = job.scanFiles.map((abs) => path_1.default.relative(root, abs).split(path_1.default.sep).join("/"));
         const fileTree = await (0, uploadHelpers_1.buildFileTree)(allFiles, root);
+        const insights = (0, uploadHelpers_1.calculateRepositoryInsights)(fileTree);
         let packageInfo = null;
         const pkgPath = allFiles.find((f) => f.endsWith("package.json"));
         if (pkgPath) {
@@ -154,7 +155,7 @@ async function runJobStep(job) {
         const entryPoints = [];
         const walkTree = (nodes) => {
             for (const n of nodes) {
-                if (n.type === "file" && n.entry) {
+                if (n.type === "file" && n.entry.isLikelyEntry) {
                     entryPoints.push(n.fullPath);
                 }
                 if (n.children)
@@ -166,6 +167,7 @@ async function runJobStep(job) {
         await db.collection("projects").updateOne({ projectId: job.projectId }, {
             $set: {
                 fileTree,
+                insights,
                 packageInfo,
                 entryPoints,
                 tags,
@@ -183,6 +185,28 @@ async function runJobStep(job) {
     if (job.step === "file-analysis") {
         const cursor = (_a = job.cursor) !== null && _a !== void 0 ? _a : 0;
         const files = job.scanFiles || [];
+        const project = await db.collection("projects").findOne({
+            projectId: job.projectId,
+        });
+        const fileTree = (project === null || project === void 0 ? void 0 : project.fileTree) || [];
+        const fileMetadataMap = new Map();
+        function flattenTree(nodes) {
+            for (const node of nodes) {
+                if (node.type === "file" && node.fullPath) {
+                    fileMetadataMap.set(node.fullPath, {
+                        functions: node.functions || [],
+                        classes: node.classes || [],
+                        imports: node.imports || [],
+                        exports: node.exports || [],
+                        components: node.components || [],
+                    });
+                }
+                if (node.children) {
+                    flattenTree(node.children);
+                }
+            }
+        }
+        flattenTree(fileTree);
         const slice = files.slice(cursor, cursor + CHUNK_SIZE);
         const partialDir = path_1.default.join(job.extractedPath, "partialGraphs");
         const MAX_DB_FILE_SIZE = 100 * 1024;
@@ -198,6 +222,7 @@ async function runJobStep(job) {
                     .relative(path_1.default.join(job.extractedPath, "repo"), absPath)
                     .split(path_1.default.sep)
                     .join("/");
+                const fileMeta = fileMetadataMap.get(relPath);
                 let content = "";
                 try {
                     const buf = fs_1.default.readFileSync(absPath);
@@ -232,6 +257,11 @@ async function runJobStep(job) {
                     stat,
                     content,
                     absPath,
+                    functions: (fileMeta === null || fileMeta === void 0 ? void 0 : fileMeta.functions) || [],
+                    classes: (fileMeta === null || fileMeta === void 0 ? void 0 : fileMeta.classes) || [],
+                    imports: (fileMeta === null || fileMeta === void 0 ? void 0 : fileMeta.imports) || [],
+                    exports: (fileMeta === null || fileMeta === void 0 ? void 0 : fileMeta.exports) || [],
+                    components: (fileMeta === null || fileMeta === void 0 ? void 0 : fileMeta.components) || [],
                 };
             }));
             const docs = results.filter(Boolean).map((r) => ({
@@ -248,6 +278,11 @@ async function runJobStep(job) {
                             language: (0, language_1.detectLanguage)(r.relPath),
                             isCode: /\.(js|ts|jsx|tsx)$/.test(r.absPath),
                             content: r.stat.size <= MAX_DB_FILE_SIZE ? r.content : undefined,
+                            functions: r.functions,
+                            classes: r.classes,
+                            imports: r.imports,
+                            exports: r.exports,
+                            components: r.components,
                         },
                     },
                     upsert: true,
@@ -311,8 +346,15 @@ async function runJobStep(job) {
         const project = await db
             .collection("projects")
             .findOne({ projectId: job.projectId, members: job.ownerId });
-        const fileTree = project === null || project === void 0 ? void 0 : project.fileTree;
+        const fileTree = (project === null || project === void 0 ? void 0 : project.fileTree) || [];
         (0, buildCrossFileImpactMap_1.attachCrossFileImpact)(fileTree);
+        await db.collection("projects").updateOne({
+            projectId: job.projectId,
+        }, {
+            $set: {
+                fileTree,
+            },
+        });
         const withDeps = (0, injectFileDependencyEdges_1.injectFileDependencyEdges)(merged, fileTree);
         const enriched = (0, enrichGraphSemantics_1.enrichGraphSemantics)(withDeps);
         const styled = {
@@ -361,7 +403,6 @@ async function runJobStep(job) {
             return;
         }
         await (0, graphStore_1.saveGraph)(job.projectId, finalGraph, job.ownerId);
-        // fs.rmSync(job.extractedPath, { recursive: true, force: true });
         await (0, jobStore_1.saveJob)({
             ...job,
             status: "done",

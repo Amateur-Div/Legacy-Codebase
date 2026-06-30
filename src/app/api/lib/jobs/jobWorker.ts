@@ -16,7 +16,11 @@ import {
 } from "../impactEngine";
 import { detectLanguage } from "../language";
 import { saveGraph } from "../graph/graphStore";
-import { buildFileTree, detectTags } from "../uploadHelpers";
+import {
+  buildFileTree,
+  calculateRepositoryInsights,
+  detectTags,
+} from "../uploadHelpers";
 import {
   cleanOldCache,
   ensureCacheRoot,
@@ -174,6 +178,7 @@ export async function runJobStep(job: any) {
     );
 
     const fileTree = await buildFileTree(allFiles, root);
+    const insights = calculateRepositoryInsights(fileTree);
 
     let packageInfo = null;
 
@@ -198,7 +203,7 @@ export async function runJobStep(job: any) {
 
     const walkTree = (nodes: any[]) => {
       for (const n of nodes) {
-        if (n.type === "file" && n.entry) {
+        if (n.type === "file" && n.entry.isLikelyEntry) {
           entryPoints.push(n.fullPath);
         }
         if (n.children) walkTree(n.children);
@@ -214,6 +219,7 @@ export async function runJobStep(job: any) {
       {
         $set: {
           fileTree,
+          insights,
           packageInfo,
           entryPoints,
           tags,
@@ -236,6 +242,33 @@ export async function runJobStep(job: any) {
     const cursor = job.cursor ?? 0;
 
     const files = job.scanFiles || [];
+    const project = await db.collection("projects").findOne({
+      projectId: job.projectId,
+    });
+
+    const fileTree = project?.fileTree || [];
+
+    const fileMetadataMap = new Map();
+
+    function flattenTree(nodes: any[]) {
+      for (const node of nodes) {
+        if (node.type === "file" && node.fullPath) {
+          fileMetadataMap.set(node.fullPath, {
+            functions: node.functions || [],
+            classes: node.classes || [],
+            imports: node.imports || [],
+            exports: node.exports || [],
+            components: node.components || [],
+          });
+        }
+
+        if (node.children) {
+          flattenTree(node.children);
+        }
+      }
+    }
+
+    flattenTree(fileTree);
 
     const slice = files.slice(cursor, cursor + CHUNK_SIZE);
     const partialDir = path.join(job.extractedPath, "partialGraphs");
@@ -259,6 +292,8 @@ export async function runJobStep(job: any) {
             .relative(path.join(job.extractedPath, "repo"), absPath)
             .split(path.sep)
             .join("/");
+
+          const fileMeta = fileMetadataMap.get(relPath);
 
           let content = "";
 
@@ -303,6 +338,11 @@ export async function runJobStep(job: any) {
             stat,
             content,
             absPath,
+            functions: fileMeta?.functions || [],
+            classes: fileMeta?.classes || [],
+            imports: fileMeta?.imports || [],
+            exports: fileMeta?.exports || [],
+            components: fileMeta?.components || [],
           };
         }),
       );
@@ -321,6 +361,11 @@ export async function runJobStep(job: any) {
               language: detectLanguage(r.relPath),
               isCode: /\.(js|ts|jsx|tsx)$/.test(r.absPath),
               content: r.stat.size <= MAX_DB_FILE_SIZE ? r.content : undefined,
+              functions: r.functions,
+              classes: r.classes,
+              imports: r.imports,
+              exports: r.exports,
+              components: r.components,
             },
           },
           upsert: true,
@@ -405,9 +450,20 @@ export async function runJobStep(job: any) {
       .collection("projects")
       .findOne({ projectId: job.projectId, members: job.ownerId });
 
-    const fileTree = project?.fileTree;
+    const fileTree = project?.fileTree || [];
 
     attachCrossFileImpact(fileTree);
+
+    await db.collection("projects").updateOne(
+      {
+        projectId: job.projectId,
+      },
+      {
+        $set: {
+          fileTree,
+        },
+      },
+    );
 
     const withDeps = injectFileDependencyEdges(merged, fileTree);
     const enriched = enrichGraphSemantics(withDeps);
@@ -472,8 +528,6 @@ export async function runJobStep(job: any) {
     }
 
     await saveGraph(job.projectId, finalGraph, job.ownerId);
-
-    // fs.rmSync(job.extractedPath, { recursive: true, force: true });
 
     await saveJob({
       ...job,
