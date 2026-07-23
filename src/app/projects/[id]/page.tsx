@@ -19,7 +19,6 @@ import { useProjectData } from "@/hooks/useProjectData";
 import { useFileHandler } from "@/hooks/useFileHandler";
 import { getLanguage } from "../utils/language";
 import ProjectWorkspaceTabs from "../components/ProjectWorkspaceTabs";
-import ArchitectureWorkspace from "../components/ArchitectureWorkspace";
 import { FlowGraph } from "@/app/api/lib/analyzer/types";
 
 export default function ProjectDetailPage() {
