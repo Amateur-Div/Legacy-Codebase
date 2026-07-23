@@ -1,4 +1,8 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+
+dotenv.config({
+  path: ".env.local",
+});
 
 import { Worker } from "bullmq";
 import IORedis from "ioredis";
@@ -10,8 +14,6 @@ const connection = new IORedis(process.env.REDIS_URL!, {
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
 });
-
-console.log("Worker started!");
 
 new Worker(
   "analysis",

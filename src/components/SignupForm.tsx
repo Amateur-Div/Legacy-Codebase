@@ -11,7 +11,6 @@ import {
 import { useRouter } from "next/navigation";
 import { auth, db } from "@/lib/firebase";
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
-import axios from "axios";
 import Link from "next/link";
 import {
   Card,
@@ -70,7 +69,7 @@ export default function SignupPage() {
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         data.email,
-        data.password
+        data.password,
       );
 
       await sendEmailVerification(userCredential.user);
@@ -83,13 +82,6 @@ export default function SignupPage() {
         photoURL: "",
         createdAt: serverTimestamp(),
         role: "user",
-      });
-
-      await axios.post("/api/users", {
-        uid: userCredential.user.uid,
-        email: data.email,
-        name: data.name,
-        photoURL: "",
       });
 
       toast.success("Account created! Please verify your email.");
@@ -125,7 +117,7 @@ export default function SignupPage() {
         <Card className="rounded-none border-0">
           <CardHeader className="text-center mt-6">
             <h2 className="text-2xl font-semibold">Create your account</h2>
-            <p className="text-sm text-gray-500">Let’s get you started</p>
+            <p className="text-sm text-gray-500">let's get you started</p>
           </CardHeader>
 
           <CardContent className="space-y-4 px-6">

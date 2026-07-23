@@ -8,7 +8,7 @@ import fs from "fs";
 import { jobQueue } from "../lib/queue";
 import path from "path";
 
-const MAX_ZIP_SIZE = 1024 * 1024 * 70;
+const MAX_ZIP_SIZE = 1024 * 1024 * 100;
 
 export async function POST(req: NextRequest) {
   try {
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     if (file.size > MAX_ZIP_SIZE) {
       return NextResponse.json(
         {
-          error: "Repository ZIP exceeds the maximum supported size of 50 MB",
+          error: "Repository ZIP exceeds the maximum supported size of 100 MB",
         },
         {
           status: 404,

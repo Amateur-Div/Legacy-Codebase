@@ -30,21 +30,15 @@ import ShareProjectModal from "@/components/ShareProjectModel";
 interface ProjectHeaderProps {
   projectName: string;
   projectId: string;
-
   editingName: boolean;
   newName: string;
-
   setNewName: (val: string) => void;
   setEditingName: (val: boolean) => void;
-
   handleRename: () => void;
-
   tags: string[];
   tagInput: string;
-
   setTagInput: (val: string) => void;
   setTags: (tags: string[]) => void;
-
   handleDelete: () => void;
 }
 

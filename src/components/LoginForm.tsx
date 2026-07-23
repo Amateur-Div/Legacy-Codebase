@@ -85,6 +85,7 @@ export default function LoginPage() {
       if (!userCredential.user.emailVerified) {
         toast.warning("Please verify your email before logging in.");
         setIsVerified(false);
+        await auth.signOut();
         return;
       }
 

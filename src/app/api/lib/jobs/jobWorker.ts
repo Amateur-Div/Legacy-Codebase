@@ -457,6 +457,7 @@ export async function runJobStep(job: any) {
     await db.collection("projects").updateOne(
       {
         projectId: job.projectId,
+        members: job.ownerId,
       },
       {
         $set: {
@@ -473,7 +474,7 @@ export async function runJobStep(job: any) {
       edges: styleGraphEdges(enriched.edges),
     };
 
-    const deadFiles = findDeadFiles(styled);
+    const deadFiles = findDeadFiles(styled, project?.entryPoints || []);
     const circularDeps = findCircularDependencies(styled);
     const importanceRanking = computeFileImportance(styled).slice(0, 20);
 
@@ -537,7 +538,7 @@ export async function runJobStep(job: any) {
       message: "Completed",
     });
 
-    db.collection("projects").updateOne(
+    await db.collection("projects").updateOne(
       { projectId: job.projectId },
       {
         $set: {

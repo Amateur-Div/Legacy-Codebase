@@ -1,5 +1,6 @@
 "use client";
 
+import ProjectTree from "@/components/ProjectTree";
 import FlowVisualizer from "./FlowVisualizer";
 
 interface Props {

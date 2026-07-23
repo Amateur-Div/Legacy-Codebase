@@ -36,7 +36,7 @@ async function uploadZipToGridFS(projectId, file) {
     uploadStream.end();
     return new Promise((resolve, reject) => {
         uploadStream.on("finish", () => {
-            resolve(uploadStream.id.toString()); // keep string for DB
+            resolve(uploadStream.id.toString());
         });
         uploadStream.on("error", reject);
     });

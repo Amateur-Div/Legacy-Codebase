@@ -19,11 +19,9 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import { NODE_H, NODE_W, getDagreGraph } from "../utils/graphLayout";
 import { getAuth } from "firebase/auth";
-import { useProjectPresence } from "../context/ProjectPresenceContext";
 import { FlowGraph } from "@/app/api/lib/analyzer/types";
 import {
   collectReachable,
-  collectSubgraph,
   normalizePath,
   normalizeType,
 } from "../utils/graphHelpers";
@@ -76,7 +74,6 @@ export default function FlowVisualizer({
   id,
   selectedFileNode,
 }: Props) {
-  const { users, channelRef, subscribedRef } = useProjectPresence();
   const [heatmapMode, setHeatmapMode] = useState<
     "none" | "complexity" | "importance"
   >("none");
@@ -141,24 +138,6 @@ export default function FlowVisualizer({
     }
     return null;
   }, [selectedNode]);
-
-  useEffect(() => {
-    const uid = getAuth().currentUser?.uid;
-    if (!uid) return;
-
-    if (!subscribedRef.current) return;
-
-    if (!selectedNode) return;
-
-    try {
-      channelRef.current?.trigger("client-graph-focus", {
-        uid,
-        nodeId: selectedNode.id,
-      });
-    } catch (err) {
-      console.error("Graph focus trigger failed", err);
-    }
-  }, [selectedNode, channelRef, subscribedRef]);
 
   const onNodeClick = useCallback((_: any, node: Node) => {
     setSelectedNode(node);
@@ -309,7 +288,7 @@ export default function FlowVisualizer({
 
   const functionFocusedNodes = useMemo(() => {
     if (!focusedFunctionId) return null;
-    return collectSubgraph(focusedFunctionId, adjacency.forward);
+    return collectReachable(focusedFunctionId, adjacency.forward);
   }, [focusedFunctionId, adjacency]);
 
   const highlightedNodes = useMemo(() => {
@@ -330,7 +309,7 @@ export default function FlowVisualizer({
   );
 
   const maxFileImportance = useMemo(() => {
-    const values = graphData.nodes
+    const values = (graphData?.nodes ?? [])
       .filter((n) => n.type === "file")
       .map((n) => n.semantic?.importance ?? 0);
 
@@ -432,15 +411,6 @@ export default function FlowVisualizer({
       setLoadingExplain(false);
     }
   }
-
-  const uid = getAuth().currentUser?.uid;
-
-  const currUsers = useMemo(() => {
-    if (!selectedNode) return [];
-    return users.filter(
-      (u) => u.uid !== uid && u.focusedNodeId === selectedNode.id,
-    );
-  }, [users, selectedNode]);
 
   if (graphMode === "disabled") {
     return (
@@ -625,7 +595,6 @@ export default function FlowVisualizer({
             explanation={explanation}
             loadingExplain={loadingExplain}
             explainNode={explainNode}
-            currUsers={currUsers}
           />
         </div>
       </div>

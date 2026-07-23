@@ -5,26 +5,16 @@ import { Node } from "reactflow";
 
 interface GraphInspectorPanelProps {
   selectedNode: Node | null;
-
   explanation: string | null;
-
   loadingExplain: boolean;
-
   explainNode: (node: any) => Promise<void>;
-
-  currUsers: any[];
 }
 
 export default function GraphInspectorPanel({
   selectedNode,
-
   explanation,
-
   loadingExplain,
-
   explainNode,
-
-  currUsers,
 }: GraphInspectorPanelProps) {
   return (
     <div className="h-[30vh] bg-white border-t border-gray-200 p-3 overflow-y-auto shrink-0">
@@ -111,17 +101,6 @@ export default function GraphInspectorPanel({
           >
             {explanation}
           </div>
-        )}
-
-        {currUsers.length > 0 && (
-          <>
-            <br />
-            <span>Currently inspecting this node :</span>
-            <br />
-            <div className="p-2 ring-2 text-black ring-blue-400 rounded-lg animate-pulse">
-              {currUsers[0].email?.split("@")[0] ?? "user"}
-            </div>
-          </>
         )}
       </div>
     </div>

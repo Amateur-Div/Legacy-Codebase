@@ -53,6 +53,10 @@ export function useProjectPolling(projectId: string) {
       return false;
     };
 
+    (async () => {
+      await pollJob();
+    })();
+
     const interval = setInterval(async () => {
       const done = await pollJob();
       if (done) clearInterval(interval);

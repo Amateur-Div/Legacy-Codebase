@@ -20,7 +20,6 @@ import { useProjectData } from "@/hooks/useProjectData";
 import { useFileHandler } from "@/hooks/useFileHandler";
 import { getLanguage } from "../utils/language";
 import ProjectWorkspaceTabs from "../components/ProjectWorkspaceTabs";
-import APIsWorkspace from "../components/APIsWorkspace";
 import ArchitectureWorkspace from "../components/ArchitectureWorkspace";
 import { FlowGraph } from "@/app/api/lib/analyzer/types";
 
@@ -281,18 +280,6 @@ export default function ProjectDetailPage() {
               />
             </div>
           </div>
-        )}
-
-        <ArchitectureWorkspace
-          graphData={graphData}
-          setGraphData={setGraphData}
-          projectId={projectId}
-          project={project}
-          selectedFileNode={selectedFileNode}
-        />
-
-        {activeView === "apis" && (
-          <APIsWorkspace fileTree={project?.fileTree} />
         )}
       </ProjectPresenceProvider>
     </div>

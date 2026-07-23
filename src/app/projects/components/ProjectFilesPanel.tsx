@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { FolderSearch, FolderInput } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -45,7 +45,6 @@ export default function ProjectFilesPanel({
   fileTree,
   setSearchTerm,
   setLine,
-  setSelectedPath,
   entryPoints,
   selectedPath,
 }: ProjectFilesPanelProps) {
@@ -64,10 +63,6 @@ export default function ProjectFilesPanel({
     (path: string) => handleFileClick(path),
     [handleFileClick],
   );
-
-  useEffect(() => {
-    console.log(entryPoints);
-  }, [entryPoints]);
 
   return (
     <div className="bg-card border rounded-2xl p-6 shadow-sm h-full w-full flex flex-col min-h-0">
@@ -88,31 +83,6 @@ export default function ProjectFilesPanel({
           }}
           className="w-full max-w-md"
         />
-
-        {/* {entryPoints?.length > 0 && (
-          <div>
-            <div className="flex items-center gap-2 text-sm font-semibold text-foreground mb-2">
-              <FolderInput className="w-4 h-4 text-primary" />
-              Entry Points
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {entryPoints.slice(0, 5).map((entry, i) => (
-                <Badge
-                  key={i}
-                  variant="outline"
-                  className="bg-muted text-muted-foreground text-xs font-medium hover:bg-accent"
-                >
-                  {entry}
-                </Badge>
-              ))}
-              {entryPoints.length > 8 && (
-                <Badge variant="secondary">
-                  +{entryPoints.length - 8} more
-                </Badge>
-              )}
-            </div>
-          </div>
-        )} */}
 
         {entryPoints?.length > 0 && (
           <div className="space-y-3">

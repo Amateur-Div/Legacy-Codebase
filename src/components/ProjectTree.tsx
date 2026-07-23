@@ -28,11 +28,8 @@ const TreeNode = memo(function TreeNode({
   depth = 0,
 }: TreeNodeProps) {
   const isFolder = node.type === "folder";
-
   const folderPath = node.fullPath || `${depth}-${node.name}`;
-
   const expanded = expandedFolders.has(folderPath);
-
   const isSelected = node.fullPath === selectedPath;
 
   const handleClick = () => {

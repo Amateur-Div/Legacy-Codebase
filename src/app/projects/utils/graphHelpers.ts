@@ -1,31 +1,18 @@
-export function collectSubgraph(start: string, adj: Map<string, string[]>) {
+export function collectReachable(start: string, adj: Map<string, string[]>) {
   const visited = new Set<string>();
   const queue = [start];
 
   while (queue.length) {
-    const cur = queue.shift()!;
-    if (visited.has(cur)) continue;
-    visited.add(cur);
+    const current = queue.shift()!;
 
-    for (const next of adj.get(cur) || []) {
-      queue.push(next);
-    }
-  }
+    if (visited.has(current)) continue;
 
-  return visited;
-}
+    visited.add(current);
 
-export function collectReachable(start: string, adj: Map<string, string[]>) {
-  const visited = new Set<string>();
-  const q = [start];
-
-  while (q.length) {
-    const cur = q.shift()!;
-    if (visited.has(cur)) continue;
-    visited.add(cur);
-
-    for (const next of adj.get(cur) || []) {
-      if (!visited.has(next)) q.push(next);
+    for (const next of adj.get(current) || []) {
+      if (!visited.has(next)) {
+        queue.push(next);
+      }
     }
   }
 

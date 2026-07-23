@@ -149,7 +149,7 @@ export default function CodeEditorPanel({
                     e.currentTarget as HTMLElement
                   ).getBoundingClientRect();
 
-                  const containerRect =
+                  const containerRect: DOMRect | undefined =
                     codeContainerRef.current?.getBoundingClientRect();
 
                   handleMouseEnterLine(

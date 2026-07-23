@@ -29,7 +29,6 @@ import { toast } from "sonner";
 import RenameFileDialog from "./FileRenameDialog";
 import { ObjectId } from "bson";
 import { getAuth } from "firebase/auth";
-import { useProjectPresence } from "../context/ProjectPresenceContext";
 import {
   patchGraphOnFileDelete,
   patchGraphOnFileRename,
@@ -73,7 +72,6 @@ export default function FileViewerPanel({
   getLanguageMeta,
 }: FileViewerPanelProps) {
   const { targetLineNumber, setTargetLineNumber } = useAuth();
-  const { setActiveFile } = useProjectPresence();
   const [viewMode, setViewMode] = useState<"code" | "graph">("code");
   const [searchTerm, setSearchTerm] = useState<any>("");
   const codeContainerRef = useRef<HTMLDivElement | null>(null);
@@ -105,10 +103,6 @@ export default function FileViewerPanel({
   );
 
   const isLargeFile = lineCount > 1000;
-
-  useEffect(() => {
-    setActiveFile(selectedPath!);
-  }, [selectedPath]);
 
   useEffect(() => {
     const pre = codeContainerRef.current?.querySelector("pre");

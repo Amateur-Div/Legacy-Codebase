@@ -393,11 +393,6 @@ export async function buildFileTree(files: string[], rootDir: string) {
 
       if (!existing) {
         let size, loc, highlights;
-        let entryAnalysis: EntrypointAnalysis = {
-          isLikelyEntry: false,
-          score: 0,
-          reasons: [],
-        };
         let imports: any[] = [];
         let functions: any[] = [];
         let classes: any[] = [];
@@ -406,6 +401,11 @@ export async function buildFileTree(files: string[], rootDir: string) {
         let blocks: any[] = [];
         let apis: any[] = [];
         let schemas: any[] = [];
+        let entryAnalysis: EntrypointAnalysis = {
+          isLikelyEntry: false,
+          score: 0,
+          reasons: [],
+        };
 
         if (isFile) {
           const absolutePath = path.join(rootDir, fullPath);
