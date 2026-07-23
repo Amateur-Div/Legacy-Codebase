@@ -8,7 +8,6 @@ import ProjectHeader from "../components/ProjectHeader";
 import ProjectFilesPanel from "../components/ProjectFilesPanel";
 import ProjectOverview from "../components/ProjectOverview";
 import FileViewerPanel from "../components/FileViewerPanel";
-import { ProjectPresenceProvider } from "../context/ProjectPresenceContext";
 import { generateSummary } from "../utils/markdown";
 import {
   filterFileTree,
@@ -211,77 +210,75 @@ export default function ProjectDetailPage() {
 
   return (
     <div className="p-6 space-y-6 min-h-screen">
-      <ProjectPresenceProvider projectId={projectId}>
-        <ProjectHeader
-          projectName={project.projectName}
-          projectId={projectId}
-          editingName={editingName}
-          newName={newName}
-          setNewName={setNewName}
-          setEditingName={setEditingName}
-          handleRename={handleRename}
-          tags={tags}
-          tagInput={tagInput}
-          setTagInput={setTagInput}
-          setTags={setTags}
-          handleDelete={handleDelete}
-        />
+      <ProjectHeader
+        projectName={project.projectName}
+        projectId={projectId}
+        editingName={editingName}
+        newName={newName}
+        setNewName={setNewName}
+        setEditingName={setEditingName}
+        handleRename={handleRename}
+        tags={tags}
+        tagInput={tagInput}
+        setTagInput={setTagInput}
+        setTags={setTags}
+        handleDelete={handleDelete}
+      />
 
-        <ProjectWorkspaceTabs
-          activeView={activeView}
-          setActiveView={setActiveView}
-        />
+      <ProjectWorkspaceTabs
+        activeView={activeView}
+        setActiveView={setActiveView}
+      />
 
-        {activeView === "overview" && (
-          <div className="space-y-8">
-            <div className="col-span-12 lg:col-span-4">
-              <ProjectOverview
-                summary={readmeSummary}
-                insights={insights}
-                packageInfo={project?.packageInfo}
-                getLanguageMeta={getLanguage}
-              />
-            </div>
+      {activeView === "overview" && (
+        <div className="space-y-8">
+          <div className="col-span-12 lg:col-span-4">
+            <ProjectOverview
+              summary={readmeSummary}
+              insights={insights}
+              packageInfo={project?.packageInfo}
+              getLanguageMeta={getLanguage}
+            />
           </div>
-        )}
+        </div>
+      )}
 
-        {activeView === "explorer" && (
-          <div className="grid grid-cols-12 gap-6 items-stretch min-h-[900px]">
-            <div className="col-span-12 lg:col-span-5 flex">
-              <ProjectFilesPanel
-                project={project}
-                setLine={setLine}
-                handleFileClick={handleFileClick}
-                fileTree={filteredTree}
-                setSelectedPath={setSelectedPath}
-                searchTerm={searchTerm}
-                setSearchTerm={setSearchTerm}
-                entryPoints={project?.entryPoints || []}
-                selectedPath={selectedPath}
-              />
-            </div>
-
-            <div className="col-span-12 lg:col-span-7 flex">
-              <FileViewerPanel
-                projectId={project._id}
-                project={project}
-                graphData={graphData}
-                setGraphData={setGraphData}
-                setProject={setProject}
-                fileTree={filteredTree || project.fileTree}
-                selectedPath={selectedPath}
-                setSelectedPath={setSelectedPath}
-                fileContent={fileContent}
-                lineNumber={line}
-                selectedFileNode={selectedFileNode}
-                readmeContent={readmeContent}
-                readmeSummary={readmeSummary}
-                getLanguageMeta={getLanguage}
-              />
-            </div>
+      {activeView === "explorer" && (
+        <div className="grid grid-cols-12 gap-6 items-stretch min-h-[900px]">
+          <div className="col-span-12 lg:col-span-5 flex">
+            <ProjectFilesPanel
+              project={project}
+              setLine={setLine}
+              handleFileClick={handleFileClick}
+              fileTree={filteredTree}
+              setSelectedPath={setSelectedPath}
+              searchTerm={searchTerm}
+              setSearchTerm={setSearchTerm}
+              entryPoints={project?.entryPoints || []}
+              selectedPath={selectedPath}
+            />
           </div>
-        )}
-      </ProjectPresenceProvider>
+
+          <div className="col-span-12 lg:col-span-7 flex">
+            <FileViewerPanel
+              projectId={project._id}
+              project={project}
+              graphData={graphData}
+              setGraphData={setGraphData}
+              setProject={setProject}
+              fileTree={filteredTree || project.fileTree}
+              selectedPath={selectedPath}
+              setSelectedPath={setSelectedPath}
+              fileContent={fileContent}
+              lineNumber={line}
+              selectedFileNode={selectedFileNode}
+              readmeContent={readmeContent}
+              readmeSummary={readmeSummary}
+              getLanguageMeta={getLanguage}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
