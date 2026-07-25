@@ -29,12 +29,17 @@ export default function FileInsightsSidebar({
   return (
     <div className="w-[380px] shrink-0 overflow-y-auto pr-1 min-w-0">
       <div className="space-y-4 pt-1">
-        <div className="bg-card border rounded-xl p-3">
-          <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
-            Impact Analysis
-          </h3>
-          <ImpactSummaryCard graph={graphData} onFileChange={setSelectedPath} />
-        </div>
+        {graphData.meta?.intelligence ? (
+          <div className="bg-card border rounded-xl p-3">
+            <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
+              Impact Analysis
+            </h3>
+            <ImpactSummaryCard
+              graph={graphData}
+              onFileChange={setSelectedPath}
+            />
+          </div>
+        ) : null}
 
         {selectedFileNode?.language && (
           <>

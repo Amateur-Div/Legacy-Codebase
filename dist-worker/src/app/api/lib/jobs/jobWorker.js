@@ -350,6 +350,7 @@ async function runJobStep(job) {
         (0, buildCrossFileImpactMap_1.attachCrossFileImpact)(fileTree);
         await db.collection("projects").updateOne({
             projectId: job.projectId,
+            members: job.ownerId,
         }, {
             $set: {
                 fileTree,
@@ -410,7 +411,7 @@ async function runJobStep(job) {
             progress: 100,
             message: "Completed",
         });
-        db.collection("projects").updateOne({ projectId: job.projectId }, {
+        await db.collection("projects").updateOne({ projectId: job.projectId }, {
             $set: {
                 analysisComplete: true,
             },

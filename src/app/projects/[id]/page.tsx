@@ -44,9 +44,9 @@ export default function ProjectDetailPage() {
   const { jobStatus, jobProgress, jobMessage, graphReady } = useProjectPolling(
     project?.projectId,
   );
-  const [activeView, setActiveView] = useState<
-    "overview" | "explorer" | "architecture" | "apis"
-  >("overview");
+  const [activeView, setActiveView] = useState<"overview" | "explorer">(
+    "overview",
+  );
 
   useEffect(() => {
     if (!graphReady || !projectId) return;

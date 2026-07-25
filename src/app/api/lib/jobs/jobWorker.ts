@@ -474,7 +474,7 @@ export async function runJobStep(job: any) {
       edges: styleGraphEdges(enriched.edges),
     };
 
-    const deadFiles = findDeadFiles(styled, project?.entryPoints || []);
+    const deadFiles = findDeadFiles(styled);
     const circularDeps = findCircularDependencies(styled);
     const importanceRanking = computeFileImportance(styled).slice(0, 20);
 

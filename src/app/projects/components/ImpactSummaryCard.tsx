@@ -40,13 +40,13 @@ export function ImpactSummaryCard({ graph, onFileChange }: Props) {
       };
     }
 
-    if (deadCount > 10) {
-      return {
-        label: "Medium",
-        className:
-          "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
-      };
-    }
+    // if (deadCount > 10) {
+    //   return {
+    //     label: "Medium",
+    //     className:
+    //       "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
+    //   };
+    // }
 
     return {
       label: "Low",
@@ -121,7 +121,7 @@ export function ImpactSummaryCard({ graph, onFileChange }: Props) {
             </div>
           </div>
 
-          {deadFiles.length > 0 && (
+          {/* {deadFiles.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-sm font-semibold">
                 <FileWarning className="w-4 h-4 text-red-500" />
@@ -147,7 +147,7 @@ export function ImpactSummaryCard({ graph, onFileChange }: Props) {
                 </div>
               </ScrollArea>
             </div>
-          )}
+          )} */}
         </CardContent>
       </Card>
 

@@ -590,12 +590,12 @@ export default function FlowVisualizer({
             </button>
           </div>
 
-          <GraphInspectorPanel
+          {/* <GraphInspectorPanel
             selectedNode={selectedNode}
             explanation={explanation}
             loadingExplain={loadingExplain}
             explainNode={explainNode}
-          />
+          /> */}
         </div>
       </div>
     </div>

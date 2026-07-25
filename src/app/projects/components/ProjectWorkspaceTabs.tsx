@@ -2,14 +2,14 @@
 
 import clsx from "clsx";
 
-type View = "overview" | "explorer" | "architecture" | "apis";
+type View = "overview" | "explorer";
 
 interface Props {
   activeView: View;
   setActiveView: (view: View) => void;
 }
 
-const tabs: View[] = ["overview", "explorer", "architecture", "apis"];
+const tabs: View[] = ["overview", "explorer"];
 
 export default function ProjectWorkspaceTabs({
   activeView,

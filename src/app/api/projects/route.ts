@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
     console.error("PROJECT_FETCH_ERROR", err);
     return NextResponse.json(
       { error: "Failed to fetch projects" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

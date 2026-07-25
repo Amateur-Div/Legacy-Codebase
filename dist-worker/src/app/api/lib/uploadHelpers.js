@@ -322,11 +322,6 @@ async function buildFileTree(files, rootDir) {
             let existing = current.find((item) => item.name === part);
             if (!existing) {
                 let size, loc, highlights;
-                let entryAnalysis = {
-                    isLikelyEntry: false,
-                    score: 0,
-                    reasons: [],
-                };
                 let imports = [];
                 let functions = [];
                 let classes = [];
@@ -335,6 +330,11 @@ async function buildFileTree(files, rootDir) {
                 let blocks = [];
                 let apis = [];
                 let schemas = [];
+                let entryAnalysis = {
+                    isLikelyEntry: false,
+                    score: 0,
+                    reasons: [],
+                };
                 if (isFile) {
                     const absolutePath = path_1.default.join(rootDir, fullPath);
                     try {

@@ -10,8 +10,8 @@ export default function NotFound() {
       <p className="text-sm text-gray-500 mb-6">
         !Sorry, the page you are looking for does not exist.
       </p>
-      <Link href={"/dashboard"} className="text-blue-500 underline">
-        Go back to dashboard.
+      <Link href={"/projects"} className="text-blue-500 underline">
+        Go back to projects.
       </Link>
     </div>
   );
