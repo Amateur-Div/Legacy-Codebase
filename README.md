@@ -2,11 +2,18 @@
 
 > Understand unfamiliar JavaScript and TypeScript repositories through interactive architecture visualization, dependency analysis, and code exploration.
 
+**Live Demo:** https://legacy-codebase.vercel.app/
+
+![Next.js](...)
+![TypeScript](...)
+![MongoDB](...)
+![React](...)
+
 ## Overview
 
 Understanding an unfamiliar codebase can be challenging, especially when the project contains many files with complex dependencies. Developers often spend significant time navigating folders, tracing imports and trying to understand how different parts of the application are connected.
 
-Legacy Codebase Analyzer was built to simplify this process. It allows users to upload a JavaScript or TypeScript repository as a ZIP archive, analyses the project in the background and generates interactive visualizations, dependency information and repository insights to help developers understand the overall architecture more quickly.
+Legacy Codebase Analyzer was built to simplify this process. It allows users to upload a JavaScript or TypeScript repository as a ZIP archive, analyzes the project in the background, and generates interactive visualizations, dependency information and repository insights to help developers understand the overall architecture more quickly.
 
 The application follows an asynchronous processing architecture using background workers, allowing repository uploads to remain responsive while long-running analysis tasks execute independently.
 
@@ -33,10 +40,11 @@ The application follows an asynchronous processing architecture using background
 ### Repository Insights
 
 - Generate repository metadata and project statistics.
-- Analyse file relationships and dependency information.
+- Visualize relationships between files and modules.
+- Explore project structure through generated dependency information.
 - Help developers understand the overall project structure.
 
-### 📁 Project Management
+### Project Management
 
 - Create and manage multiple repository analysis projects.
 - Organize repositories within a dedicated dashboard.
@@ -140,41 +148,29 @@ Explore relationships between files and modules using an interactive code flow g
 ## Core Analysis Architecture
 
 User
-
-⬇
-
+│
+▼
 Next.js Frontend
-
-⬇
-
+│
+▼
 Upload Repository
-
-⬇
-
+│
+▼
 Next.js API
-
-⬇
-
+│
+▼
 Create Analysis Job
-
-⬇
-
+│
+▼
 Background Worker
-
-⬇
-
-Parse & Analyse Repository
-
-⬇
-
+│
+▼
+Parse & Analyze Repository
+│
+▼
 MongoDB
-
-⬇
-
-Fetch Analysis Data
-
-⬇
-
+│
+▼
 Interactive UI
 
 - The application uses an asynchronous analysis pipeline to keep repository uploads responsive. After a repository is uploaded, the backend creates an analysis job, which is processed independently by a background worker. The generated metadata and repository insights are stored in MongoDB and later retrieved by the frontend for interactive exploration.
@@ -197,14 +193,18 @@ cd Legacy-Codebase
 npm install
 ```
 
+> **Note:** Start the Redis server and the analysis worker before uploading repositories.
+
 ### Environment Variables
 
 Create a `.env.local` file and configure the required environment variables.
 
-MONGODB_URI :- MongoDb connection string,
-FIREBASE_CLIENT_EMAIL :- Firebase client email,
-FIREBASE_PRIVATE_KEY :- Your firebase private key,
-REDIS_URL :- Your redis url upstash/local
+| Variable              | Description                         |
+| --------------------- | ----------------------------------- |
+| MONGODB_URI           | MongoDB connection string           |
+| FIREBASE_CLIENT_EMAIL | Firebase service account email      |
+| FIREBASE_PRIVATE_KEY  | Firebase private key                |
+| REDIS_URL             | Redis connection URL(upstash/local) |
 
 ### Run the Development Server
 
