@@ -4,11 +4,6 @@
 
 **Live Demo:** https://legacy-codebase.vercel.app/
 
-![Next.js](...)
-![TypeScript](...)
-![MongoDB](...)
-![React](...)
-
 ## Overview
 
 Understanding an unfamiliar codebase can be challenging, especially when the project contains many files with complex dependencies. Developers often spend significant time navigating folders, tracing imports and trying to understand how different parts of the application are connected.
@@ -147,31 +142,33 @@ Explore relationships between files and modules using an interactive code flow g
 
 ## Core Analysis Architecture
 
+```text
 User
-│
-▼
+ │
+ ▼
 Next.js Frontend
-│
-▼
+ │
+ ▼
 Upload Repository
-│
-▼
+ │
+ ▼
 Next.js API
-│
-▼
+ │
+ ▼
 Create Analysis Job
-│
-▼
+ │
+ ▼
 Background Worker
-│
-▼
+ │
+ ▼
 Parse & Analyze Repository
-│
-▼
+ │
+ ▼
 MongoDB
-│
-▼
+ │
+ ▼
 Interactive UI
+```
 
 - The application uses an asynchronous analysis pipeline to keep repository uploads responsive. After a repository is uploaded, the backend creates an analysis job, which is processed independently by a background worker. The generated metadata and repository insights are stored in MongoDB and later retrieved by the frontend for interactive exploration.
 
@@ -220,14 +217,14 @@ The application is deployed on Vercel for demonstration purposes.
 
 The complete repository analysis pipeline relies on a dedicated background worker for processing uploaded repositories asynchronously. This worker is not included in the public deployment due to the limitations of the free hosting environment.
 
-The public deployment showcases the application's interface and architecture, while the complete analysis workflow can be experienced by running the project locally.
+The public deployment showcases the application's interface and overall workflow, while the complete repository analysis experience is available when running the project locally
 
 ## Future Improvements
 
 - Support additional programming languages beyond JavaScript and TypeScript.
 - Resume interrupted repository analysis.
 - Incremental analysis to process only changed files.
-- Improved scalability for analysing larger repositories.
+- Improved scalability for analyzing larger repositories.
 - AI-powered code explanations and repository summaries.
 - Team collaboration and shared workspaces.
 
