@@ -1,42 +1,238 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Legacy Codebase Analyzer
 
-## Getting Started
+> Understand unfamiliar JavaScript and TypeScript repositories through interactive architecture visualization, dependency analysis, and code exploration.
 
-First, run the development server:
+## Overview
+
+Understanding an unfamiliar codebase can be challenging, especially when the project contains many files with complex dependencies. Developers often spend significant time navigating folders, tracing imports and trying to understand how different parts of the application are connected.
+
+Legacy Codebase Analyzer was built to simplify this process. It allows users to upload a JavaScript or TypeScript repository as a ZIP archive, analyses the project in the background and generates interactive visualizations, dependency information and repository insights to help developers understand the overall architecture more quickly.
+
+The application follows an asynchronous processing architecture using background workers, allowing repository uploads to remain responsive while long-running analysis tasks execute independently.
+
+## Features
+
+### Interactive Code Flow Visualization
+
+- Generate an interactive graph showing relationships between files and modules.
+- Explore repository architecture visually.
+- Navigate project dependencies with an intuitive graph interface.
+
+### Repository Explorer
+
+- Browse the complete project structure through an IDE-like file explorer.
+- View source code with syntax highlighting.
+- Inspect project files and extracted metadata.
+
+### Asynchronous Analysis Pipeline
+
+- Upload JavaScript and TypeScript repositories as ZIP archives.
+- Background analysis using a job queue and dedicated worker.
+- Real-time progress updates throughout the analysis process.
+
+### Repository Insights
+
+- Generate repository metadata and project statistics.
+- Analyse file relationships and dependency information.
+- Help developers understand the overall project structure.
+
+### 📁 Project Management
+
+- Create and manage multiple repository analysis projects.
+- Organize repositories within a dedicated dashboard.
+- Access project details and analysis workspace from a single interface.
+
+### Authentication
+
+- Secure Email/Password authentication.
+- Google Sign-In support.
+- Protected routes for authenticated users.
+
+## Screenshots
+
+### Authentication
+
+<p align="center">
+  <img src="./docs/images/auth.png" width="900"/>
+</p>
+
+Secure authentication using Email/Password and Google Sign-In.
+
+---
+
+### Project Dashboard
+
+<p align="center">
+  <img src="./docs/images/dashboard.png" width="900"/>
+</p>
+
+Manage multiple repository analysis projects from a central dashboard.
+
+---
+
+### Repository Upload
+
+<p align="center">
+  <img src="./docs/images/upload.png" width="900"/>
+</p>
+
+Upload JavaScript or TypeScript repositories as ZIP archives for analysis.
+
+---
+
+### Repository Analysis
+
+<p align="center">
+  <img src="./docs/images/progress.png" width="900"/>
+</p>
+
+Monitor repository analysis as it progresses through the processing pipeline.
+
+---
+
+### Repository Explorer
+
+<p align="center">
+  <img src="./docs/images/explorer.png" width="900"/>
+</p>
+
+Browse the project structure and inspect source files through an IDE-like interface.
+
+---
+
+### Code Flow Visualization
+
+<p align="center">
+  <img src="./docs/images/graph.png" width="900"/>
+</p>
+
+Explore relationships between files and modules using an interactive code flow graph.
+
+## Tech Stack
+
+### Frontend
+
+- Next.js
+- React
+- TypeScript
+- Tailwind CSS
+- shadcn/ui
+
+### Backend
+
+- Next.js API Routes
+- MongoDB
+
+### Authentication
+
+- Firebase Authentication
+
+### Analysis Pipeline
+
+- BullMQ
+- Redis
+- Babel Parser
+
+### Visualization
+
+- React Flow
+
+## Core Analysis Architecture
+
+User
+
+⬇
+
+Next.js Frontend
+
+⬇
+
+Upload Repository
+
+⬇
+
+Next.js API
+
+⬇
+
+Create Analysis Job
+
+⬇
+
+Background Worker
+
+⬇
+
+Parse & Analyse Repository
+
+⬇
+
+MongoDB
+
+⬇
+
+Fetch Analysis Data
+
+⬇
+
+Interactive UI
+
+- The application uses an asynchronous analysis pipeline to keep repository uploads responsive. After a repository is uploaded, the backend creates an analysis job, which is processed independently by a background worker. The generated metadata and repository insights are stored in MongoDB and later retrieved by the frontend for interactive exploration.
+
+## Local Setup
+
+### Prerequisites
+
+Before running the project locally, make sure you have:
+
+- Node.js
+- MongoDB
+- npm
+
+### Installation
+
+```bash
+git clone https://github.com/Amateur-Div/Legacy-Codebase.git
+cd Legacy-Codebase
+npm install
+```
+
+### Environment Variables
+
+Create a `.env.local` file and configure the required environment variables.
+
+MONGODB_URI :- MongoDb connection string,
+FIREBASE_CLIENT_EMAIL :- Firebase client email,
+FIREBASE_PRIVATE_KEY :- Your firebase private key,
+REDIS_URL :- Your redis url upstash/local
+
+### Run the Development Server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Authentication ✌️
+Open `http://localhost:3000` in your browser.
 
-<p>
-    <img src="docs/images/auth.png" width="900" />
-</p>
+## Deployment
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The application is deployed on Vercel for demonstration purposes.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The complete repository analysis pipeline relies on a dedicated background worker for processing uploaded repositories asynchronously. This worker is not included in the public deployment due to the limitations of the free hosting environment.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The public deployment showcases the application's interface and architecture, while the complete analysis workflow can be experienced by running the project locally.
 
-## Learn More
+## Future Improvements
 
-To learn more about Next.js, take a look at the following resources:
+- Support additional programming languages beyond JavaScript and TypeScript.
+- Resume interrupted repository analysis.
+- Incremental analysis to process only changed files.
+- Improved scalability for analysing larger repositories.
+- AI-powered code explanations and repository summaries.
+- Team collaboration and shared workspaces.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## License
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+This repository is shared for portfolio and educational purposes only.
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The source code is not licensed for reuse, modification, or redistribution. All rights are reserved by the author.

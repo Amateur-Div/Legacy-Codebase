@@ -709,7 +709,8 @@ export default function FileViewerPanel({
               </p>
             )
           ) : (
-            <div className="bg-card border rounded-xl p-3 h-full flex flex-col">
+            // <div className="bg-card border rounded-xl p-3 h-full flex flex-col">
+            <>
               <h3 className="text-sm font-semibold mb-2">
                 Code Intelligence Graph
               </h3>
@@ -722,7 +723,8 @@ export default function FileViewerPanel({
                   selectedFileNode={selectedFileNode}
                 />
               </div>
-            </div>
+            </>
+            // </div>
           )}
         </div>
       </div>

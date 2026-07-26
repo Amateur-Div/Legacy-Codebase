@@ -569,7 +569,7 @@ export default function FlowVisualizer({
               </div>
             )}
 
-            <button
+            {/* <button
               onClick={zoomToFit}
               style={{
                 position: "absolute",
@@ -587,7 +587,7 @@ export default function FlowVisualizer({
               }}
             >
               ⤢
-            </button>
+            </button> */}
           </div>
 
           {/* <GraphInspectorPanel
