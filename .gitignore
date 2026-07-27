@@ -13,6 +13,9 @@
 # worker
 /dist-worker
 
+# docs/images
+/docs/images
+
 # firebase secrets
 firebase-admin.json
 
