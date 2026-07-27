@@ -10,8 +10,8 @@
 !.yarn/releases
 !.yarn/versions
 
-# uploads / runtime data
-project_uploads
+# worker
+/dist-worker
 
 # firebase secrets
 firebase-admin.json
