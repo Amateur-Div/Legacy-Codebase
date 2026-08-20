@@ -27,6 +27,19 @@ import {
 
 import ShareProjectModal from "@/components/ShareProjectModel";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { auth } from "@/lib/firebase";
+import { getAuth } from "firebase/auth";
+
 interface ProjectHeaderProps {
   projectName: string;
   projectId: string;
@@ -59,27 +72,20 @@ const AUTO_TECH_TAGS = [
 export default function ProjectHeader({
   projectName,
   projectId,
-
   editingName,
   newName,
-
   setNewName,
   setEditingName,
-
   handleRename,
-
   tags,
   tagInput,
-
   setTagInput,
   setTags,
-
   handleDelete,
 }: ProjectHeaderProps) {
   const [tagError, setTagError] = useState("");
-
   const [shareProject, setShareProject] = useState(false);
-
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const router = useRouter();
 
   const { stackTags, customTags } = useMemo(() => {
@@ -100,7 +106,7 @@ export default function ProjectHeader({
     };
   }, [tags]);
 
-  const addTag = () => {
+  const addTag = async () => {
     const trimmed = tagInput.trim().toLowerCase();
 
     if (!trimmed) return;
@@ -117,12 +123,37 @@ export default function ProjectHeader({
 
     setTags([...tags, trimmed]);
 
+    const token = await getAuth().currentUser?.getIdToken();
+    await fetch(`/api/project`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        id: projectId,
+        tags: [...tags, trimmed],
+      }),
+    });
+
     setTagInput("");
     setTagError("");
   };
 
-  const removeTag = (tag: string) => {
-    setTags(tags.filter((t) => t !== tag));
+  const removeTag = async (tag: string) => {
+    const updatedTags = tags.filter((t) => t != tag);
+    setTags(updatedTags);
+
+    const token = await getAuth().currentUser?.getIdToken();
+    await fetch(`/api/project`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        id: projectId,
+        tags: updatedTags,
+      }),
+    });
   };
 
   const handleRenameClick = () => {
@@ -144,13 +175,13 @@ export default function ProjectHeader({
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex items-start gap-3">
             {editingName ? (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <input
                   type="text"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   placeholder="Enter project name"
-                  className="h-10 rounded-lg border bg-background px-3 text-lg font-semibold outline-none focus:ring-2 focus:ring-primary/20"
+                  className="h-10 w-full sm:w-80 rounded-lg border bg-background px-3 text-lg font-semibold outline-none focus:ring-2 focus:ring-primary/20"
                 />
 
                 <button
@@ -163,7 +194,7 @@ export default function ProjectHeader({
               </div>
             ) : (
               <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+                <h1 className="break-words text-2xl font-semibold tracking-tight text-foreground">
                   {projectName}
                 </h1>
 
@@ -179,12 +210,12 @@ export default function ProjectHeader({
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="self-start rounded-lg border p-2 transition hover:bg-muted">
+              <button className="self-start rounded-lg border p-2.5 transition hover:bg-muted">
                 <MoreVertical className="h-4 w-4" />
               </button>
             </DropdownMenuTrigger>
 
-            <DropdownMenuContent align="end" className="w-52 bg-popover">
+            <DropdownMenuContent align="end" className="w-52 bg-white">
               <DropdownMenuItem
                 onClick={() => setShareProject(true)}
                 className="cursor-pointer"
@@ -202,7 +233,10 @@ export default function ProjectHeader({
               </DropdownMenuItem>
 
               <DropdownMenuItem
-                onClick={handleDelete}
+                onSelect={(e) => {
+                  e.preventDefault();
+                  setDeleteDialogOpen(true);
+                }}
                 className="cursor-pointer text-red-600 focus:text-red-600"
               >
                 <Trash2Icon className="mr-2 h-4 w-4" />
@@ -211,6 +245,30 @@ export default function ProjectHeader({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+
+        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this project?</AlertDialogTitle>
+
+              <AlertDialogDescription>
+                This action cannot be undone. All project files, analysis,
+                graphs and members will be permanently deleted.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+
+              <AlertDialogAction
+                onClick={handleDelete}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {stackTags.length > 0 && (
           <div className="space-y-3">
@@ -257,7 +315,7 @@ export default function ProjectHeader({
               </motion.div>
             ))}
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col items-center gap-2 sm:flex-row">
               <input
                 type="text"
                 value={tagInput}
@@ -274,13 +332,13 @@ export default function ProjectHeader({
                     addTag();
                   }
                 }}
-                className="h-9 rounded-lg border bg-background px-3 text-xs outline-none focus:ring-2 focus:ring-primary/20"
+                className="h-9 flex-1 rounded-lg border bg-background px-3 text-xs outline-none focus:ring-2 focus:ring-primary/20"
               />
 
               <button
                 type="button"
                 onClick={addTag}
-                className="rounded-lg border bg-muted/40 p-2 transition hover:bg-muted"
+                className="w-8.5 rounded-lg border bg-muted/40 p-2 transition hover:bg-muted"
               >
                 <PlusIcon className="h-4 w-4 text-muted-foreground" />
               </button>

@@ -40,37 +40,57 @@ const TreeNode = memo(function TreeNode({
     }
   };
 
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleClick();
+    }
+  };
+
   return (
     <div className="min-w-0">
       <div
-        className={`flex items-center gap-2 px-2 py-1 rounded-md cursor-pointer transition-colors min-w-0 ${
-          isSelected ? "bg-primary/10 text-primary" : "hover:bg-accent"
-        }`}
-        style={{
-          paddingLeft: `${depth * 14 + 10}px`,
-        }}
+        role="treeitem"
+        aria-expanded={isFolder ? expanded : undefined}
+        aria-selected={isSelected}
+        tabIndex={0}
         onClick={handleClick}
+        onKeyDown={handleKeyDown}
+        className={[
+          "group",
+          "flex min-w-0 items-center gap-1.5",
+          "min-h-9 rounded-md",
+          "px-2 py-1.5",
+          "cursor-pointer select-none",
+          "transition-colors duration-150",
+          "focus-visible:outline-none",
+          "focus-visible:ring-2 focus-visible:ring-primary/50",
+          isSelected ? "bg-primary/10 text-primary" : "hover:bg-accent",
+        ].join(" ")}
+        style={{
+          paddingLeft: `clamp(6px, ${depth * 12 + 8}px, 120px)`,
+        }}
       >
-        <div className="w-4 shrink-0 flex justify-center">
+        <div className="flex h-5 w-5 shrink-0 items-center justify-center">
           {isFolder ? (
             expanded ? (
               <ChevronDown
-                size={14}
+                size={15}
                 className="text-muted-foreground transition-transform"
               />
             ) : (
               <ChevronRight
-                size={14}
+                size={15}
                 className="text-muted-foreground transition-transform"
               />
             )
           ) : (
-            <FileText size={14} className="text-muted-foreground" />
+            <FileText size={15} className="text-muted-foreground" />
           )}
         </div>
 
         {isFolder && (
-          <div className="w-4 shrink-0 flex justify-center">
+          <div className="flex h-5 w-5 shrink-0 items-center justify-center">
             <Folder
               size={16}
               className="text-yellow-500 dark:text-yellow-400"
@@ -79,26 +99,31 @@ const TreeNode = memo(function TreeNode({
         )}
 
         <span
-          className={`text-sm truncate min-w-0 ${
-            isFolder ? "font-medium text-primary" : "text-muted-foreground"
-          }`}
+          className={[
+            "min-w-0 flex-1 truncate text-sm",
+            isFolder ? "font-medium text-primary" : "text-muted-foreground",
+          ].join(" ")}
+          title={node.name}
         >
           {node.name}
         </span>
       </div>
 
-      {expanded &&
-        node.children?.map((child) => (
-          <TreeNode
-            key={child.fullPath || child.name}
-            node={child}
-            onFileClick={onFileClick}
-            expandedFolders={expandedFolders}
-            toggleFolder={toggleFolder}
-            selectedPath={selectedPath}
-            depth={depth + 1}
-          />
-        ))}
+      {expanded && node.children?.length ? (
+        <div role="group">
+          {node.children.map((child) => (
+            <TreeNode
+              key={child.fullPath || child.name}
+              node={child}
+              onFileClick={onFileClick}
+              expandedFolders={expandedFolders}
+              toggleFolder={toggleFolder}
+              selectedPath={selectedPath}
+              depth={depth + 1}
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 });
@@ -139,8 +164,19 @@ export default function ProjectTree({
   }, []);
 
   return (
-    <div className="rounded-xl border bg-background flex-1 min-h-0 overflow-auto">
-      <div className="p-2 space-y-1">
+    <div
+      role="tree"
+      aria-label="Project file tree"
+      className="
+        min-h-0
+        flex-1
+        overflow-auto
+        rounded-xl
+        border
+        bg-background
+      "
+    >
+      <div className="min-w-0 space-y-0.5 p-2">
         {fileTree.map((node) => (
           <TreeNode
             key={node.fullPath || node.name}

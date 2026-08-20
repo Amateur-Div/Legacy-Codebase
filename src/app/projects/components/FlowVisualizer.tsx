@@ -27,9 +27,9 @@ import {
 } from "../utils/graphHelpers";
 import { typeColors } from "../utils/graphStyles";
 import CustomNode from "./graph/CustomNode";
-import GraphInspectorPanel from "./graph/GraphInspectorPanel";
 import { buildVisualNodes } from "../utils/buildVisualNodes";
 import GraphToolbar from "./graph/GraphToolbar";
+import { ChevronDown, ChevronUp, X } from "lucide-react";
 
 type GraphMode = "full" | "disabled";
 
@@ -432,6 +432,16 @@ export default function FlowVisualizer({
     );
   }
 
+  if (!selectedFileNode) {
+    return (
+      <div>
+        <p className="text-muted-foreground text-sm text-center py-20">
+          Select a file to explore Code Flow Visualization.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="mb-6">
       <div
@@ -439,26 +449,28 @@ export default function FlowVisualizer({
         onClick={() => setShowVisualizer((v) => !v)}
       >
         <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-          🧩 Code Flow Visualization
+          Code Flow Visualization
         </h2>
         <span className="text-gray-500 text-sm">
-          {showVisualizer ? "Hide ▲" : "Show ▼"}
+          {showVisualizer ? <ChevronUp /> : <ChevronDown />}
         </span>
       </div>
       <div
-        className={`w-full transition-all duration-300 ease-in-out border-x border-b border-gray-200 rounded-b-xl overflow-hidden ${
-          showVisualizer ? "max-h-[85vh]" : "max-h-0"
-        }`}
-        style={{ height: showVisualizer ? "85vh" : 0 }}
+        className={`w-full transition-all duration-300 ease-in-out border-x border-b border-gray-200 rounded-b-xl overflow-hidden
+        ${
+          showVisualizer
+            ? "h-[65vh] sm:h-[70vh] md:h-[75vh] lg:h-[80vh] xl:h-[85vh]"
+            : "h-0"
+        }
+      `}
       >
         <div
           style={{
             width: "100%",
-            background: "#f9fafb",
             borderRadius: 8,
             overflow: "hidden",
           }}
-          className="flex flex-col h-full min-h-0"
+          className="bg-muted/20 flex flex-col h-full min-h-0"
         >
           <GraphToolbar
             graphScope={graphScope}
@@ -476,7 +488,7 @@ export default function FlowVisualizer({
 
           <div
             id="ai-explanation"
-            className="flex-1 min-h-0 w-full h-full overflow-hidden"
+            className="relative flex-1 min-h-0 w-full h-full overflow-hidden"
           >
             <ReactFlow
               nodes={visualNodes}
@@ -487,7 +499,11 @@ export default function FlowVisualizer({
               panOnScroll
               zoomOnPinch
               panOnDrag
-              style={{ background: "#ffffff", height: "100%", width: "100%" }}
+              style={{
+                background: "hsl(var(--background))",
+                height: "100%",
+                width: "100%",
+              }}
             >
               <Background color="#e0e0e0" gap={20} />
               {graphMode === "full" && (
@@ -497,42 +513,56 @@ export default function FlowVisualizer({
                     borderRadius: 12,
                     boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
                   }}
+                  zoomable
+                  pannable
+                  maskColor="rgba(0, 0, 0,.08)"
                 />
               )}
-              <Controls />
+              <Controls showInteractive={false} position="bottom-left" />
             </ReactFlow>
 
             {showLegend && (
-              <div
-                style={{
-                  position: "absolute",
-                  right: 16,
-                  bottom: 16,
-                  width: 260,
-                  background: "#ffffff",
-                  border: "1px solid #E5E7EB",
-                  borderRadius: 10,
-                  padding: 12,
-                  fontSize: 12,
-                  color: "#374151",
-                  boxShadow: "0 10px 25px rgba(0,0,0,0.1)",
-                  zIndex: 50,
-                }}
-              >
-                <strong style={{ fontSize: 13 }}>Graph Legend</strong>
+              <div className="absolute z-50 right-3 top-3 w-[min(260px,calc(100%-24px))] max-h-[calc(100%-24px)] overflow-y-auto rounded-xl border bg-white p-3 text-xs text-gray-700 shadow-xl">
+                <div className="flex items-center justify-between border-b pb-3">
+                  <h3 className="font-semibold text-sm">Graph Legend</h3>
+
+                  <button
+                    onClick={() => setShowLegend(false)}
+                    className="
+                    rounded-md
+                    p-1
+                    text-muted-foreground
+                    hover:bg-muted
+                    hover:text-foreground
+                    transition-colors
+                    "
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
 
                 <div style={{ marginTop: 8 }}>
-                  <div>
-                    🟢 <b>Function</b> — entry & body
+                  <div className="flex items-center gap-2">
+                    <div className="size-3 rounded-full bg-green-500" />
+                    <span>Function</span>— entry & body
                   </div>
                   <div>
-                    🔵 <b>If / Branch</b> — conditional paths
+                    <div className="flex items-center gap-2">
+                      <div className="size-3 rounded-full bg-blue-500" />
+                      <span>If / Branch</span>— conditional paths
+                    </div>
                   </div>
                   <div>
-                    🟣 <b>Loop</b> — iterative flow
+                    <div className="flex items-center gap-2">
+                      <div className="size-3 rounded-full bg-purple-500" />
+                      <span>Loop</span>— iterative flow
+                    </div>
                   </div>
                   <div>
-                    ⚪ <b>Statement</b> — linear execution
+                    <div className="flex items-center gap-2">
+                      <div className="size-3 rounded-full bg-white border border-gray-300" />
+                      <span>Statement</span> — linear execution
+                    </div>
                   </div>
                 </div>
 
@@ -540,7 +570,7 @@ export default function FlowVisualizer({
 
                 <div>
                   <div>
-                    🎨 <b>Heatmap</b>
+                    <b>Heatmap</b>
                   </div>
                   <div>• Darker = higher complexity / importance</div>
                 </div>
@@ -549,7 +579,7 @@ export default function FlowVisualizer({
 
                 <div>
                   <div>
-                    🌫 <b>Faded nodes</b>
+                    <b>Faded nodes</b>
                   </div>
                   <div>• Filtered out</div>
                   <div>• Dead / unreachable</div>
@@ -560,7 +590,7 @@ export default function FlowVisualizer({
 
                 <div>
                   <div>
-                    ➡ <b>Edges</b>
+                    <b>Edges</b>
                   </div>
                   <div>• Solid → execution order</div>
                   <div>• Branch → true / false</div>

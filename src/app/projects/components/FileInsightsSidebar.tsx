@@ -1,7 +1,15 @@
 "use client";
 
 import React, { useEffect } from "react";
-import { Badge, BookText, FileWarning, ListTodo } from "lucide-react";
+import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Badge,
+  BookText,
+  FileWarning,
+  FunctionSquare,
+  ListTodo,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -15,7 +23,7 @@ interface Props {
   setSelectedPath: (path: string) => void;
   setShowDocs: React.Dispatch<React.SetStateAction<boolean>>;
   showDocs: boolean;
-  scrollToLine: (line: number) => void;
+  jumpToLine: (line: number) => void;
 }
 
 export default function FileInsightsSidebar({
@@ -24,13 +32,13 @@ export default function FileInsightsSidebar({
   setSelectedPath,
   setShowDocs,
   showDocs,
-  scrollToLine,
+  jumpToLine,
 }: Props) {
   return (
-    <div className="w-[380px] shrink-0 overflow-y-auto pr-1 min-w-0">
+    <div className="w-full min-w-0 overflow-y-auto pr-1">
       <div className="space-y-4 pt-1">
         {graphData.meta?.intelligence ? (
-          <div className="bg-card border rounded-xl p-3">
+          <div className="rounded-xl border bg-card p-3 sm:p-4">
             <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
               Impact Analysis
             </h3>
@@ -59,7 +67,7 @@ export default function FileInsightsSidebar({
                 </div>
                 {selectedFileNode.entry && (
                   <abbr title="Entry point">
-                    <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"></Badge>
+                    <span className="inline-block h-2.5 w-2.5 rounded-full bg-green-500" />
                   </abbr>
                 )}
               </div>
@@ -84,7 +92,7 @@ export default function FileInsightsSidebar({
 
         <div className="border rounded-xl p-3 bg-background space-y-3">
           <Button
-            className="w-full"
+            className="h-10 w-full"
             variant="outline"
             onClick={() => setShowDocs((prev) => !prev)}
           >
@@ -101,12 +109,14 @@ export default function FileInsightsSidebar({
                     <li
                       key={i}
                       className="py-1 cursor-pointer"
-                      onClick={() => scrollToLine(api.start)}
+                      onClick={() => jumpToLine(api.start)}
                     >
                       <code className="font-mono text-green-600">
                         {api.method.toUpperCase()}
                       </code>
-                      <span className="ml-2">{api.path}</span>
+                      <span className="ml-2 min-w-0 break-words">
+                        {api.path}
+                      </span>
                       {api.framework && (
                         <span className="ml-2 text-xs text-gray-500">
                           [{api.framework}]
@@ -158,10 +168,10 @@ export default function FileInsightsSidebar({
           <div className="border rounded-xl p-3 bg-background">
             <details open className="text-sm">
               <summary className="cursor-pointer font-medium text-foreground">
-                Jump to...
+                Code Outline
               </summary>
 
-              <div className="grid grid-cols-2 gap-4 mt-3">
+              <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {[
                   {
                     title: "Imports",
@@ -193,10 +203,12 @@ export default function FileInsightsSidebar({
 
                         <ul className="space-y-1 text-muted-foreground">
                           {data.map((item: any, i: number) => (
-                            <li key={i} className="truncate">
+                            <li key={i} className="min-w-0">
                               <button
-                                onClick={() => scrollToLine(item.start)}
-                                className="hover:underline truncate text-left w-full"
+                                type="button"
+                                onClick={() => jumpToLine(item.start)}
+                                title={item.name}
+                                className="w-full min-w-0 truncate rounded px-1 py-0.5 text-left transition-colors hover:bg-muted hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                               >
                                 {item.name}
                               </button>
@@ -264,7 +276,7 @@ export default function FileInsightsSidebar({
                 <ul className="ml-4 list-disc space-y-1 text-red-600">
                   {selectedFileNode.impact.brokenImports.map(
                     (b: { source: string }, i: number) => (
-                      <li key={i} className="font-mono text-xs">
+                      <li key={i} className="break-all font-mono text-xs">
                         {b.source}
                       </li>
                     ),
@@ -319,7 +331,7 @@ export default function FileInsightsSidebar({
                             {title}
                           </div>
                           <ul
-                            className={`list-disc ml-6 text-sm ${color} space-y-1`}
+                            className={`ml-5 list-disc space-y-1 break-words text-sm ${color}`}
                           >
                             {items.map((item: string, i: number) => (
                               <li key={i}>{item}</li>

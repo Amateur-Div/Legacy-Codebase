@@ -3,9 +3,7 @@
 import { useEffect, useState } from "react";
 
 import {
-  Home,
   User,
-  Settings,
   Menu,
   Folder,
   PanelLeftClose,
@@ -44,7 +42,6 @@ import {
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/context/AuthContext";
 import ProfileDrawer from "../ProfileDrawer";
-import { Skeleton } from "../ui/skeleton";
 
 const navItems = [
   {
@@ -61,16 +58,11 @@ const navItems = [
 
 export default function Sidebar() {
   const { user } = useAuth();
-
   const [collapsed, setCollapsed] = useState(false);
-
   const [sheetOpen, setSheetOpen] = useState(false);
-
   const pathname = usePathname();
-
   const router = useRouter();
-
-  const isMobile = useMediaQuery("(max-width: 768px)");
+  const isMobile = useMediaQuery("(max-width: 767px)");
 
   const NavItems = () => (
     <nav className="flex flex-col gap-1 p-2">
@@ -92,7 +84,7 @@ export default function Sidebar() {
               collapsed ? "justify-center" : "justify-start",
 
               isActive
-                ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                ? "bg-primary text-primary-foreground shadow-sm font-semibold hover:bg-primary/90"
                 : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
             )}
           >
@@ -132,10 +124,10 @@ export default function Sidebar() {
         )}
       >
         {!collapsed && (
-          <div className="overflow-hidden">
-            <h1 className="truncate text-lg font-bold text-primary">
-              Legacy Code
-            </h1>
+          <div className="leading-tight">
+            <h1 className="font-bold text-primary">Legacy</h1>
+
+            <p className="text-xs text-muted-foreground">Codebase Analyzer</p>
           </div>
         )}
 
@@ -166,13 +158,13 @@ export default function Sidebar() {
           <Button
             variant="ghost"
             size="icon"
-            className="fixed left-3 top-3 z-50 md:hidden"
+            className="fixed left-4 top-4 z-50 rounded-full bg-background/90 backdrop-blur border shadow-sm md:hidden"
           >
-            <Menu />
+            <Menu className="h-5 w-5" />
           </Button>
         </SheetTrigger>
 
-        <SheetContent side="left" className="w-64 p-0">
+        <SheetContent side="left" className="w-[85vw] max-w-xs p-0">
           <SheetHeader className="sr-only">Sidebar</SheetHeader>
 
           <div className="flex h-full flex-col bg-background">
@@ -188,7 +180,7 @@ export default function Sidebar() {
       <aside
         className={clsx(
           "sticky top-0 flex h-screen shrink-0 flex-col border-r border-border bg-background transition-all duration-300",
-          collapsed ? "w-16" : "w-64",
+          collapsed ? "w-18" : "w-72",
         )}
       >
         {SidebarContent}
@@ -197,25 +189,8 @@ export default function Sidebar() {
   );
 }
 
-function SidebarUser({
-  user,
-  collapsed,
-}: {
-  user: any;
-
-  collapsed: boolean;
-}) {
+function SidebarUser({ user, collapsed }: { user: any; collapsed: boolean }) {
   const [showProfilePanel, setShowProfilePanel] = useState(false);
-
-  const [hasUserProfile, setHasUserProfile] = useState(true);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setHasUserProfile(false);
-    }, 3000);
-
-    return () => clearTimeout(timer);
-  }, []);
 
   return (
     <div className="border-t border-border p-3">
@@ -228,25 +203,21 @@ function SidebarUser({
               collapsed ? "justify-center p-2" : "gap-3 p-2",
             )}
           >
-            <Avatar className="h-9 w-9 shrink-0 border shadow-sm">
+            <Avatar className="h-9 w-9 shrink-0 border shadow-sm hover:bg-accent cursor-pointer">
               <AvatarImage src={user?.photoURL ?? undefined} />
 
               <AvatarFallback>
-                {hasUserProfile ? (
-                  <Skeleton className="h-full w-full rounded-full bg-gray-300" />
-                ) : (
-                  <User2Icon size={18} />
-                )}
+                <User2Icon size={18} />
               </AvatarFallback>
             </Avatar>
 
             {!collapsed && (
               <div className="min-w-0 overflow-hidden text-left">
-                <span className="block truncate text-sm font-semibold">
+                <span className="block truncate text-sm font-semibold hover:bg-accent">
                   {user?.name ?? "User"}
                 </span>
 
-                <span className="block truncate text-xs text-muted-foreground">
+                <span className="block truncate text-xs text-muted-foreground hover:bg-accent">
                   {user?.email ?? ""}
                 </span>
               </div>

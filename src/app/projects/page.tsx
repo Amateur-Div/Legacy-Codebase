@@ -25,7 +25,7 @@ const PROJECTS_PER_PAGE = 9;
 export default function ProjectsPage() {
   const [openUploadModal, setOpenUploadModal] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [isloading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
 
   const { user, loading } = useAuth();
@@ -96,7 +96,9 @@ export default function ProjectsPage() {
           mx-auto
           w-full
           max-w-7xl
+          px-4
           p-6
+          sm:p-6
           space-y-8
         "
         initial={{
@@ -114,17 +116,17 @@ export default function ProjectsPage() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-3">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight">
-                Your Projects
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
+                Repositories
               </h1>
 
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm sm:text-base text-muted-foreground">
                 Analyze, visualize and understand large codebases.
               </p>
             </div>
 
             <div className="rounded-xl border bg-muted/20 px-4 py-3">
-              <div className="flex flex-wrap items-center gap-2 mb-2">
+              <div className="flex flex-wrap flex-col sm:flex-row items-center gap-2 mb-2">
                 <span className="text-sm font-medium">
                   Deep Analysis Supports:
                 </span>
@@ -151,7 +153,7 @@ export default function ProjectsPage() {
           >
             <Button
               onClick={() => setOpenUploadModal(true)}
-              className="gap-2 shadow-sm"
+              className="w-full sm:w-auto gap-2 shadow-sm"
               size="lg"
             >
               <UploadCloud size={18} />
@@ -160,7 +162,7 @@ export default function ProjectsPage() {
           </motion.div>
         </div>
 
-        {isloading ? (
+        {isLoading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
             {Array.from({
               length: 6,
@@ -172,7 +174,7 @@ export default function ProjectsPage() {
             ))}
           </div>
         ) : projects.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed bg-muted/20 px-6 py-20 text-center">
+          <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed bg-muted/20 px-6 py-16 sm:py-20 text-center">
             <FolderOpen className="h-14 w-14 text-muted-foreground mb-5" />
 
             <h2 className="text-xl font-semibold">No projects yet</h2>
@@ -236,7 +238,7 @@ export default function ProjectsPage() {
         )}
 
         {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2 pt-4">
+          <div className="flex flex-wrap items-center justify-center gap-2 pt-4">
             <Button
               variant="outline"
               size="sm"

@@ -96,14 +96,13 @@ export default function CodeEditorPanel({
   const GUTTER_WIDTH = 40;
 
   return (
-    <div className="border rounded-xl overflow-hidden flex-1 min-h-0 h-full">
+    <div className="flex h-full min-h-0 flex-1 overflow-hidden rounded-xl">
       <div
         ref={codeContainerRef}
-        className="relative rounded-lg border border-border overflow-auto h-full min-h-0"
-        style={{ overflowX: "auto" }}
+        className="relative h-full min-h-0 min-w-0 overflow-auto rounded-lg border border-border"
       >
         {showRawData ? (
-          <pre className="whitespace-pre-wrap text-sm bg-muted p-4 rounded max-w-full overflow-auto">
+          <pre className="max-w-full overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-3 text-sm sm:p-4">
             {fileContent}
           </pre>
         ) : isLargeFile ? (
@@ -112,7 +111,7 @@ export default function CodeEditorPanel({
               Large file detected ({lineCount} lines) — syntax features disabled
             </div>
             <pre
-              className="whitespace-pre text-sm bg-background p-4 rounded max-w-full overflow-auto font-mono"
+              className="max-w-full overflow-auto whitespace-pre rounded bg-background p-3 font-mono text-xs sm:p-4 sm:text-sm"
               style={{
                 lineHeight: "1.6",
               }}
@@ -174,16 +173,16 @@ export default function CodeEditorPanel({
               };
             }}
             customStyle={{
-              fontSize: "0.85rem",
+              fontSize: "0.8rem",
               margin: 0,
-              padding: "1rem",
+              padding: "0.75rem",
               borderRadius: "0.5rem",
               lineHeight: "1.6",
               position: "relative",
             }}
             lineNumberStyle={{
               minWidth: `${GUTTER_WIDTH}px`,
-              marginRight: "0.8rem",
+              marginRight: "0.6rem",
             }}
           >
             {fileContent}
@@ -204,7 +203,7 @@ export default function CodeEditorPanel({
                   e.stopPropagation();
                   toggleFold(key);
                 }}
-                className="absolute rounded pl-1 pt-0.5 opacity-0 hover:opacity-100 transition-opacity"
+                className="absolute rounded p-1 opacity-70 transition-opacity hover:bg-muted/40 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                 style={{
                   left: PRE_PADDING_LEFT + GUTTER_WIDTH - 10 - innerScrollLeft,
                   top: pos.toggleTop,
@@ -274,7 +273,7 @@ export default function CodeEditorPanel({
                 line: hoveredLine,
               })
             }
-            className="comment-button absolute rounded p-1 hover:bg-muted/60"
+            className="comment-button absolute rounded-md p-1.5 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
             style={{
               left: 2,
               top: Math.max(0, hoveredLinePos - 4),
@@ -284,21 +283,11 @@ export default function CodeEditorPanel({
               justifyContent: "center",
               background: "transparent",
               padding: "4px",
-              pointerEvents: "none",
+              pointerEvents: "auto",
             }}
             aria-label={`Add comment on line ${hoveredLine}`}
           >
-            <PlusIcon
-              size={14}
-              className="text-gray-400"
-              onClick={() =>
-                setOpenCommentDialog({
-                  open: true,
-                  line: hoveredLine,
-                })
-              }
-              pointerEvents={"auto"}
-            />
+            <PlusIcon size={14} className="text-gray-400" />
           </button>
         )}
         {openCommentDialog && (
@@ -318,7 +307,7 @@ export default function CodeEditorPanel({
                 </DialogTitle>
               </DialogHeader>
               <textarea
-                className="w-full p-2 border rounded bg-gray-900 text-white"
+                className="min-h-24 w-full resize-y rounded-md border bg-gray-900 p-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary"
                 rows={4}
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}

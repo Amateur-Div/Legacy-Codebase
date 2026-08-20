@@ -11,6 +11,7 @@ import {
   Trash2,
   Check,
   UserIcon,
+  KeyRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,9 +40,9 @@ import {
   AlertDialogTrigger,
 } from "./ui/alert-dialog";
 import { cn } from "@/lib/utils";
-import { Skeleton } from "./ui/skeleton";
 import imageCompression from "browser-image-compression";
 import CropModal from "./CropModal";
+import { FirebaseError } from "firebase/app";
 
 interface UserProps {
   uid: string;
@@ -63,13 +64,13 @@ export default function ProfileDrawer({ user, onClose }: ProfileDrawerProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [photoURL, setPhotoURL] = useState(user.photoURL || "");
-  const [showSkeleton, setShowSkelet] = useState(true);
   const [name, setName] = useState(user.name || "");
   const [originalName, setOriginalName] = useState(user.name || "");
 
   const [bio, setBio] = useState(user.bio || "");
   const [originalBio, setOriginalBio] = useState(user.bio || "");
 
+  const [imageLoaded, setImageLoaded] = useState(false);
   const [cropImage, setCropImage] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -154,12 +155,20 @@ export default function ProfileDrawer({ user, onClose }: ProfileDrawerProps) {
   const handleLogout = async () => {
     setIsLoggingOut(true);
 
+    const id = toast.loading("Logging out...");
+
     try {
-      toast.loading("Logging out...");
       await auth.signOut();
+
+      toast.success("Logged out successfully.", {
+        id,
+      });
+
       router.replace("/login");
-    } catch (error) {
-      toast.error("Error");
+    } catch {
+      toast.error("Failed to log out.", {
+        id,
+      });
     } finally {
       setIsLoggingOut(false);
     }
@@ -173,10 +182,12 @@ export default function ProfileDrawer({ user, onClose }: ProfileDrawerProps) {
       await deleteUser(auth.currentUser!);
       toast.success("Account deleted.");
       router.replace("/signup");
-    } catch (err: any) {
-      if (err.code === "auth/requires-recent-login") {
-        toast.info("Please log in again to delete your account.");
-        await handleLogout();
+    } catch (err: unknown) {
+      if (err instanceof FirebaseError) {
+        if (err.code === "auth/requires-recent-login") {
+          toast.info("Please log in again to delete your account.");
+          await handleLogout();
+        }
       } else {
         toast.error("Failed to delete account.");
         console.error("Delete error:", err);
@@ -189,13 +200,8 @@ export default function ProfileDrawer({ user, onClose }: ProfileDrawerProps) {
   useEffect(() => {
     const timer = setTimeout(() => setAnimateIn(true), 10);
 
-    const setFallBackProfile = setTimeout(() => {
-      setShowSkelet(false);
-    }, 10000);
-
     return () => {
       clearTimeout(timer);
-      clearTimeout(setFallBackProfile);
     };
   }, []);
 
@@ -239,13 +245,11 @@ export default function ProfileDrawer({ user, onClose }: ProfileDrawerProps) {
               alt="avatar"
               className="rounded-full"
               loading="lazy"
+              onLoad={() => setImageLoaded(true)}
             />
+
             <AvatarFallback className="bg-gray-200">
-              {showSkeleton ? (
-                <Skeleton className="h-16 w-16 rounded-full bg-gray-300" />
-              ) : (
-                <UserIcon size={27} />
-              )}
+              <UserIcon size={27} />
             </AvatarFallback>
           </Avatar>
           <Button
@@ -374,12 +378,14 @@ export default function ProfileDrawer({ user, onClose }: ProfileDrawerProps) {
           </div>
         </div>
 
-        <Button
-          variant="outline"
-          onClick={() => router.push("/reset-password")}
-        >
-          Change Password
-        </Button>
+        <div className="flex justify-start items-center space-x-1">
+          <Button
+            variant="outline"
+            onClick={() => router.push("/reset-password")}
+          >
+            <KeyRound /> Change Password
+          </Button>
+        </div>
       </div>
       <div className="mt-auto pt-6 space-y-2 space-x-4">
         <Button
@@ -406,7 +412,8 @@ export default function ProfileDrawer({ user, onClose }: ProfileDrawerProps) {
             <AlertDialogHeader>
               <AlertDialogTitle>Delete Account</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure? This action is permanent and cannot be undone.
+                Deleting your account will permanently remove your profile. This
+                action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

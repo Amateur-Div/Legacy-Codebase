@@ -27,6 +27,7 @@ import { GoogleLogin } from "./GoogleLogin";
 import { useAuth } from "@/context/AuthContext";
 import { useRedirectIfAuthenticated } from "@/hooks/useRedirectIfAuthenticated";
 import loader from "@/utils/loader";
+import { FirebaseError } from "firebase/app";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -48,28 +49,40 @@ export default function LoginPage() {
   const { loading: isLoading } = useAuth();
 
   const [loading, setLoading] = useState(false);
-  const [isVerified, setIsVerified] = useState(true);
+  const [needsVerification, setNeedsVerification] = useState(false);
   const [cooldown, setCooldown] = useState(0);
-  const [sent, isSent] = useState(false);
+  const [isSent, setIsSent] = useState(false);
 
   useRedirectIfAuthenticated();
 
   useEffect(() => {
-    document?.body.classList.add("bg-gray-100");
+    document.body.classList.add("bg-gray-100");
 
-    let timer: ReturnType<typeof setTimeout>;
-    if (cooldown > 0) {
-      timer = setTimeout(() => setCooldown(cooldown - 1), 1000);
-    }
+    return () => {
+      document.body.classList.remove("bg-gray-100");
+    };
+  }, []);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+
+    const timer = setTimeout(() => {
+      setCooldown((prev) => prev - 1);
+    }, 1000);
+
     return () => clearTimeout(timer);
   }, [cooldown]);
 
-  const setFirebaseError = (errors: any) => {
-    switch (errors.message) {
-      case "Firebase: Error (auth/invalid-credential).":
-        return "Invalid password or email , please re-enter your credentials.";
+  const getFirebaseError = (error: FirebaseError) => {
+    switch (error.code) {
+      case "auth/invalid-credential":
+        return "Invalid email or password. Please try again.";
+
+      case "auth/network-request-failed":
+        return "Check your internet connection.";
+
       default:
-        break;
+        return "Login failed.";
     }
   };
 
@@ -84,16 +97,20 @@ export default function LoginPage() {
 
       if (!userCredential.user.emailVerified) {
         toast.warning("Please verify your email before logging in.");
-        setIsVerified(false);
+        setNeedsVerification(true);
         await auth.signOut();
         return;
       }
 
       toast.success("Logged in successfully!");
       router.replace("/projects");
-    } catch (err: any) {
-      const error = setFirebaseError(err);
-      toast.error(error || "Login failed.");
+    } catch (err: unknown) {
+      if (err instanceof FirebaseError) {
+        toast.error(getFirebaseError(err));
+      } else {
+        toast.error("Login failed.");
+      }
+
       console.error(err);
     } finally {
       setLoading(false);
@@ -103,13 +120,24 @@ export default function LoginPage() {
   const handleSendVerificationLink = async () => {
     try {
       const user = auth.currentUser;
-      if (user != null) await sendEmailVerification(user);
+
+      if (!user) {
+        return;
+      }
+
+      await sendEmailVerification(user);
       setCooldown(60);
-      isSent(true);
+      setIsSent(true);
 
       toast.success("Verification link sent successfully!");
-    } catch (err: any) {
-      toast.error(err?.message || "Error sending link.");
+    } catch (err: unknown) {
+      if (err instanceof FirebaseError) {
+        toast.error(getFirebaseError(err));
+      } else {
+        toast.error("Login failed.");
+      }
+
+      console.error(err);
     }
   };
 
@@ -118,8 +146,6 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen w-auto flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-200 px-4 relative">
-      {loading && loader()}
-
       <motion.div
         initial={{ opacity: 0, y: 40 }}
         animate={{ opacity: 1, y: 0 }}
@@ -127,7 +153,9 @@ export default function LoginPage() {
         className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 shadow-2xl rounded-2xl overflow-hidden bg-white"
       >
         <div className="hidden md:flex flex-col items-center justify-center bg-gradient-to-br from-blue-600 to-indigo-600 p-10 text-white">
-          <h2 className="text-3xl font-bold mb-4">Welcome Back 👋</h2>
+          <h2 className="text-3xl font-bold mb-4">
+            Continue Exploring Your Codebase
+          </h2>
           <p className="text-lg text-center opacity-90">
             Log in to access your dashboard and manage your codebase smarter.
           </p>
@@ -146,6 +174,7 @@ export default function LoginPage() {
               <div>
                 <Label htmlFor="email">Email</Label>
                 <Input
+                  autoComplete="email"
                   id="email"
                   type="email"
                   placeholder="you@example.com"
@@ -161,6 +190,7 @@ export default function LoginPage() {
               <div>
                 <Label htmlFor="password">Password</Label>
                 <Input
+                  autoComplete="current-password"
                   id="password"
                   type="password"
                   placeholder="••••••••"
@@ -204,19 +234,17 @@ export default function LoginPage() {
               </Button>
             </form>
 
-            {!isVerified && (
-              <div className="text-xs cursor-pointer">
-                Didn't receive email ? ,{" "}
+            {needsVerification && (
+              <div className="text-xs cursor-pointer flex items-center justify-center flex-col">
                 <Button
                   className="text-blue-500 text-xs px-1 hover:underline "
                   onClick={() => handleSendVerificationLink()}
                   disabled={cooldown > 0}
                 >
-                  click here to send{" "}
+                  Didn't receive the verification email?
                 </Button>{" "}
-                verification link.{" "}
                 <p className="text-sm text-gray-500">
-                  {sent && cooldown > 0 && `Resend link in ${cooldown}s`}
+                  {isSent && cooldown > 0 && `Resend link in ${cooldown}s`}
                 </p>
               </div>
             )}

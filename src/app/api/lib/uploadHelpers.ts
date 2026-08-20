@@ -2,8 +2,8 @@ import path from "path";
 import fs from "fs";
 
 import * as babelParser from "@babel/parser";
-import { detectLanguage, getLanguageColor } from "../lib/language";
-import { extractStructureBabel } from "../lib/extractStructureBable";
+import { detectLanguage, getLanguageColor } from "./language";
+import { extractStructureBabel } from "./extractStructureBable";
 
 const MAX_FILE_SIZE_BYTES = 1024 * 1024;
 
@@ -19,7 +19,8 @@ type CompositionEntry = {
   category: string;
   files: number;
   loc: number;
-  percent: number;
+  filePercent: number;
+  locPercent: number;
 };
 
 export function extractHighlights(code: string) {
@@ -280,7 +281,12 @@ export function calculateRepositoryInsights(tree: FileNode[]) {
     .map((entry) => ({
       ...entry,
 
-      percent:
+      filePercent:
+        totalFiles > 0
+          ? Number(((entry.files / totalFiles) * 100).toFixed(1))
+          : 0,
+
+      locPercent:
         totalLOC > 0 ? Number(((entry.loc / totalLOC) * 100).toFixed(1)) : 0,
     }))
     .sort((a, b) => {

@@ -39,6 +39,7 @@ export default function GlobalSearch({
       }
 
       abortRef.current?.abort();
+
       const controller = new AbortController();
       abortRef.current = controller;
 
@@ -47,23 +48,19 @@ export default function GlobalSearch({
       try {
         const res = await fetch("/api/project/search", {
           method: "POST",
-
           headers: {
             "Content-Type": "application/json",
           },
-
           body: JSON.stringify({
             projectId,
             query: searchQuery,
           }),
-
           signal: controller.signal,
         });
 
         const data = await res.json();
 
         setResults(data.results || []);
-
         setHasSearched(true);
       } catch (err: any) {
         if (err.name !== "AbortError") {
@@ -93,13 +90,21 @@ export default function GlobalSearch({
   }, [query, runSearch]);
 
   return (
-    <div className="border rounded-2xl bg-card shadow-sm overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-3 border-b bg-muted/40">
-        <SearchIcon className="w-4 h-4 text-muted-foreground" />
+    <div className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+      <div className="flex items-center justify-between gap-3 border-b bg-muted/40 px-3 py-3 sm:px-4">
+        <div className="flex min-w-0 items-center gap-2">
+          <SearchIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
 
-        <span className="text-sm font-medium text-muted-foreground">
-          Global Search
-        </span>
+          <span className="truncate text-sm font-medium text-muted-foreground">
+            Global Search
+          </span>
+        </div>
+
+        {results.length > 0 && !loading && (
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {results.length} {results.length === 1 ? "match" : "matches"}
+          </span>
+        )}
       </div>
 
       <div className="p-3">
@@ -107,22 +112,23 @@ export default function GlobalSearch({
           placeholder="Search across all project files..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="w-full"
+          className="h-10 w-full"
         />
       </div>
 
+      {/* Results */}
       {(loading || results.length > 0 || query.trim()) && (
         <div className="border-t">
-          <ScrollArea className="h-72 w-full">
-            <div className="p-2 pr-4 space-y-2">
+          <ScrollArea className="h-64 max-h-[40vh] w-full sm:h-72">
+            <div className="space-y-2 p-2">
               {loading && (
-                <div className="px-3 py-6 text-sm text-center text-muted-foreground">
+                <div className="px-3 py-8 text-center text-sm text-muted-foreground">
                   Searching large repository...
                 </div>
               )}
 
               {!loading && hasSearched && results.length === 0 && (
-                <div className="px-3 py-6 text-sm text-center text-muted-foreground">
+                <div className="px-3 py-8 text-center text-sm text-muted-foreground">
                   No matches found
                 </div>
               )}
@@ -131,24 +137,57 @@ export default function GlobalSearch({
                 results.map((result) => (
                   <button
                     key={`${result.path}-${result.line}`}
+                    type="button"
                     onClick={() => {
                       handleFileClick(result.path);
-
                       setLine(result.line);
                     }}
-                    className="w-full max-w-full overflow-hidden text-left rounded-xl border bg-background px-3 py-2 hover:bg-muted/60 transition-colors"
+                    className="
+                      w-full
+                      min-w-0
+                      overflow-hidden
+                      rounded-xl
+                      border
+                      bg-background
+                      px-3
+                      py-2.5
+                      text-left
+                      transition-colors
+                      hover:bg-muted/60
+                      focus-visible:outline-none
+                      focus-visible:ring-2
+                      focus-visible:ring-primary/50
+                      focus-visible:ring-offset-1
+                    "
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="font-medium text-sm break-all text-left flex-1">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <p
+                        className="
+                          min-w-0
+                          flex-1
+                          truncate
+                          text-sm
+                          font-medium
+                        "
+                        title={result.path}
+                      >
                         {result.path}
                       </p>
 
-                      <span className="text-xs text-muted-foreground shrink-0 mt-0.5">
-                        Line {result.line}
+                      <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                        L{result.line}
                       </span>
                     </div>
 
-                    <p className="text-xs text-muted-foreground mt-1 break-words line-clamp-2 text-left">
+                    <p
+                      className="
+                        mt-1.5
+                        line-clamp-2
+                        break-words
+                        text-xs
+                        text-muted-foreground
+                      "
+                    >
                       {result.snippet}
                     </p>
                   </button>

@@ -46,8 +46,8 @@ exports.buildFileTree = buildFileTree;
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const babelParser = __importStar(require("@babel/parser"));
-const language_1 = require("../lib/language");
-const extractStructureBable_1 = require("../lib/extractStructureBable");
+const language_1 = require("./language");
+const extractStructureBable_1 = require("./extractStructureBable");
 const MAX_FILE_SIZE_BYTES = 1024 * 1024;
 function extractHighlights(code) {
     const ast = babelParser.parse(code, {
@@ -230,7 +230,10 @@ function calculateRepositoryInsights(tree) {
     const composition = Object.values(compositionMap)
         .map((entry) => ({
         ...entry,
-        percent: totalLOC > 0 ? Number(((entry.loc / totalLOC) * 100).toFixed(1)) : 0,
+        filePercent: totalFiles > 0
+            ? Number(((entry.files / totalFiles) * 100).toFixed(1))
+            : 0,
+        locPercent: totalLOC > 0 ? Number(((entry.loc / totalLOC) * 100).toFixed(1)) : 0,
     }))
         .sort((a, b) => {
         if (b.loc !== a.loc) {

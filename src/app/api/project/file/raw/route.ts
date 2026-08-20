@@ -7,8 +7,8 @@ export async function GET(req: NextRequest) {
     const searchParams = req.nextUrl.searchParams;
     const projectId = searchParams.get("projectId");
     const filePath = searchParams.get("filePath");
+    const token = searchParams.get("token");
 
-    const token = req.headers.get("Authorization")?.split("Bearer ")[1];
     await authMiddleware(token);
 
     if (!projectId || !filePath) {
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
 
     const fileDoc = await db.collection("project_files").findOne({
       projectId,
-      path: filePath,
+      path: filePath.toLocaleLowerCase(),
     });
 
     if (!fileDoc) {

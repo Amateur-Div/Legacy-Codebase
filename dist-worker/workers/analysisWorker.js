@@ -17,7 +17,7 @@ const connection = new ioredis_1.default(process.env.REDIS_URL, {
 });
 new bullmq_1.Worker("analysis", async (bullJob) => {
     let job = await (0, jobStore_1.loadJob)(bullJob.data.jobId);
-    if (!job || job.status === "done")
+    if (!job || job.status === "done" || job.error)
         return;
     await (0, jobStore_1.saveJob)({
         id: job.id,

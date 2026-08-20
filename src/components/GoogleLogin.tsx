@@ -33,7 +33,7 @@ export const GoogleLogin = () => {
         });
       }
 
-      router.push("/dashboard");
+      router.push("/projects");
     } catch (error) {
       console.error("Google Sign-in Error : ", error);
       toast.error("Error Signing-in...");

@@ -10,13 +10,15 @@ import React, {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
-  FileText,
-  BookText,
-  FileDownIcon,
+  Download,
+  ExternalLink,
+  Code2,
   MoreVertical,
   Trash2,
   Pencil,
   Clipboard,
+  FileText,
+  BookText,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -257,6 +259,11 @@ export default function FileViewerPanel({
     getComment();
   }, [selectedPath]);
 
+  useEffect(() => {
+    setSearchTerm("");
+    setLastScrolledLine(null);
+  }, [selectedPath]);
+
   const addComment = async () => {
     if (!openCommentDialog.line) return;
     await fetch("/api/comments", {
@@ -299,7 +306,7 @@ export default function FileViewerPanel({
   };
 
   const debouncedScroll = debounce((line: number) => {
-    scrollToLine(line);
+    jumpToLine(line);
   }, 200);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -331,10 +338,16 @@ export default function FileViewerPanel({
     }
   };
 
-  const scrollToLine = (lineNumber: number) => {
-    if (!codeContainerRef.current) return;
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-    const lineElement = codeContainerRef.current.querySelector(
+  const jumpToLine = (lineNumber: number) => {
+    setTargetLineNumber(lineNumber);
+
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    const lineElement = codeContainerRef.current?.querySelector(
       `[data-line-number="${lineNumber}"]`,
     );
 
@@ -344,6 +357,10 @@ export default function FileViewerPanel({
         block: "center",
       });
     }
+
+    timeoutRef.current = setTimeout(() => {
+      setTargetLineNumber(null);
+    }, 1500);
   };
 
   const removeFileFromTree = (nodes: any[], targetPath: string): any[] => {
@@ -370,7 +387,7 @@ export default function FileViewerPanel({
     const oldPath = selectedPath;
 
     if (data.success) {
-      toast.success("file deleted successfully", {
+      toast.success("File deleted successfully", {
         description: selectedPath?.split("\\").pop(),
       });
       setSelectedPath(null);
@@ -384,7 +401,7 @@ export default function FileViewerPanel({
       const updatedGraph = patchGraphOnFileDelete(graphData, oldPath!);
       setGraphData(updatedGraph);
 
-      const res = await fetch(`/api/projects/${project.projectId}/graph`, {
+      await fetch(`/api/projects/${project.projectId}/graph`, {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -392,8 +409,6 @@ export default function FileViewerPanel({
         },
         body: JSON.stringify(updatedGraph),
       });
-      const data = await res.json();
-      console.log("Graph data after rename", data);
     } else {
       toast.error("Error deleting file", {
         description: data.error || "An error occured.",
@@ -423,64 +438,60 @@ export default function FileViewerPanel({
     });
   }
 
-  const handleRenameFile = async (oldPath: string, newName: string) => {
-    const token = await getAuth().currentUser?.getIdToken();
-    const res = await fetch(
-      `/api/project/file?projectId=${project.projectId}`,
-      {
-        method: "POST",
-        body: JSON.stringify({ oldPath, newName }),
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    );
+  // TODO:- Refactor rename later.
+  // const handleRenameFile = async (oldPath: string, newName: string) => {
+  //   const token = await getAuth().currentUser?.getIdToken();
+  //   const res = await fetch(
+  //     `/api/project/file?projectId=${project.projectId}`,
+  //     {
+  //       method: "POST",
+  //       body: JSON.stringify({ oldPath, newName }),
+  //       headers: {
+  //         Authorization: `Bearer ${token}`,
+  //       },
+  //     },
+  //   );
 
-    const data = await res.json();
+  //   const data = await res.json();
 
-    if (data.success) {
-      const ext = oldPath.split(".").pop();
-      const dir = selectedPath?.substring(0, oldPath.lastIndexOf("/"));
+  //   if (data.success) {
+  //     const ext = oldPath.split(".").pop();
+  //     const dir = selectedPath?.substring(0, oldPath.lastIndexOf("/"));
 
-      const updatedName = newName.endsWith(`.${ext}`)
-        ? newName
-        : `${newName}.${ext}`;
-      const newPath = `${dir}/${updatedName}`;
+  //     const updatedName = newName.endsWith(`.${ext}`)
+  //       ? newName
+  //       : `${newName}.${ext}`;
+  //     const newPath = `${dir}/${updatedName}`;
 
-      setSelectedPath(newPath);
+  //     setSelectedPath(newPath);
 
-      const filteredTree = updateFileTreeForRename(fileTree, oldPath, newPath);
-      setProject({
-        ...project,
-        fileTree: filteredTree,
-      });
+  //     const filteredTree = updateFileTreeForRename(fileTree, oldPath, newPath);
+  //     setProject({
+  //       ...project,
+  //       fileTree: filteredTree,
+  //     });
 
-      const updatedGraph = patchGraphOnFileRename(graphData, oldPath, newPath);
-      setGraphData(updatedGraph);
+  //     const updatedGraph = patchGraphOnFileRename(graphData, oldPath, newPath);
+  //     setGraphData(updatedGraph);
 
-      toast.success("File renamed.", {
-        description: `${newName}`,
-      });
-    } else {
-      toast.error("Rename failed.", {
-        description: data.error || "An error occured.",
-      });
-    }
-  };
+  //     toast.success("File renamed.", {
+  //       description: `${newName}`,
+  //     });
+  //   } else {
+  //     toast.error("Rename failed.", {
+  //       description: data.error || "An error occured.",
+  //     });
+  //   }
+  // };
 
   const handleMouseEnterLine = (lineNumber: number, top: number) => {
     setHoveredLine((prev) => (prev === lineNumber ? prev : lineNumber));
     setHoveredLinePos(top);
   };
 
-  const handleMouseLeaveLine = () => {
-    setHoveredLine(null);
-    setHoveredLinePos(null);
-  };
-
   useEffect(() => {
     if (lineNumber) {
-      scrollToLine(lineNumber);
+      jumpToLine(lineNumber);
     }
   }, [fileContent, lineNumber]);
 
@@ -503,6 +514,27 @@ export default function FileViewerPanel({
     return false;
   };
 
+  const downloadRawFile = async () => {
+    const token = await getAuth().currentUser?.getIdToken();
+
+    const res = await fetch(
+      `/api/project/file/raw?projectId=${project.projectId}&filePath=${encodeURIComponent(selectedPath!)}&token=${encodeURIComponent(token!)}`,
+    );
+
+    const blob = await res.blob();
+
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = selectedPath!.split("/").pop() ?? "file";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <>
       <div className="bg-card border rounded-2xl h-full w-full min-h-0 p-4 shadow-sm space-y-4">
@@ -522,7 +554,7 @@ export default function FileViewerPanel({
             type="button"
             onClick={() => setViewMode("graph")}
             className={`px-3 py-1 text-sm rounded-md transition ${
-              viewMode === "code"
+              viewMode === "graph"
                 ? "bg-background shadow-sm font-medium"
                 : "text-muted-foreground"
             }`}
@@ -531,14 +563,14 @@ export default function FileViewerPanel({
           </button>
         </div>
 
-        <div className="h-[650px] min-h-0">
+        <div className="h-[650px] min-h-0 sm:h-[700px] lg:h-[750px]">
           {viewMode === "code" ? (
             selectedPath ? (
-              <div className="flex gap-4 h-full">
-                <div className="flex-1 flex flex-col min-w-0 min-h-0">
-                  <div className="sticky top-0 z-10 bg-card flex items-center gap-3 border-b pb-3 mb-3 min-w-0">
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <FileText className="w-4 h-4 text-primary" />
+              <div className="grid h-full min-h-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+                <div className="flex flex-col min-w-0 min-h-0 h-full">
+                  <div className="sticky top-0 z-10 flex min-w-0 items-center gap-2 border-b bg-card pb-3 mb-3 sm:gap-3">
+                    <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+                      <FileText className="w-4 h-4 text-primary shrink-0" />
                       <span className="font-mono text-sm font-medium truncate block w-full">
                         {selectedPath}
                       </span>
@@ -547,7 +579,13 @@ export default function FileViewerPanel({
                     <div className="shrink-0">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <MoreVertical size={16} className="cursor-pointer" />
+                          <button
+                            type="button"
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                            aria-label="File actions"
+                          >
+                            <MoreVertical size={16} />
+                          </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent
                           align="end"
@@ -557,23 +595,18 @@ export default function FileViewerPanel({
                             onClick={downloadFile}
                             className="gap-2 cursor-pointer"
                           >
-                            <FileDownIcon size={14} />
+                            <Download size={14} />
                             Download
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <FileDownIcon size={14} />
-                            <a
-                              href={`/api/project/file/raw?projectId=${
-                                project.projectId
-                              }&filePath=${encodeURIComponent(selectedPath)}`}
-                              download={`/api/project/file/raw?projectId=${
-                                project.projectId
-                              }&filePath=${encodeURIComponent(selectedPath)}`}
-                            >
-                              Download Raw
-                            </a>
-                          </DropdownMenuItem>
                           <DropdownMenuItem
+                            onClick={downloadRawFile}
+                            className="gap-2 cursor-pointer"
+                          >
+                            <Download size={14} />
+                            Download Raw
+                          </DropdownMenuItem>
+                          {/* TODO: add rename later after refactor */}
+                          {/* <DropdownMenuItem
                             className="gap-2 cursor-pointer"
                             onClick={() => {
                               setRenameInputOpen(true);
@@ -581,7 +614,7 @@ export default function FileViewerPanel({
                           >
                             <Pencil size={14} />
                             Rename
-                          </DropdownMenuItem>
+                          </DropdownMenuItem> */}
                           <DropdownMenuItem
                             className="gap-2 text-red-600 cursor-pointer"
                             onClick={handleDeleteFile}
@@ -603,45 +636,43 @@ export default function FileViewerPanel({
                             <Clipboard size={14} />
                             Copy Path
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <a
-                              href={`/api/project/file/raw?projectId=${
-                                project.projectId
-                              }&filePath=${encodeURIComponent(selectedPath)}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              Open in New Tab
-                            </a>
+                          <DropdownMenuItem
+                            onClick={async () => {
+                              const token =
+                                await getAuth().currentUser?.getIdToken();
+
+                              window.open(
+                                `/api/project/file/raw?projectId=${project.projectId}&filePath=${encodeURIComponent(selectedPath)}&token=${encodeURIComponent(token!)}`,
+                                "_blank",
+                                "noopener,noreferrer",
+                              );
+                            }}
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                            Open in New Tab
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => setShowRawData((prev) => !prev)}
+                            className="gap-2 cursor-pointer"
+                          >
+                            <Code2 size={14} />
+                            {showRawData
+                              ? "View Syntax Highlighted"
+                              : "View Raw"}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-                    <RenameFileDialog
-                      open={renameInputOpen}
-                      onOpenChange={setRenameInputOpen}
-                      oldPath={selectedPath}
-                      onRename={(newName) => {
-                        return handleRenameFile(selectedPath, newName);
-                      }}
-                    />
                   </div>
 
-                  <div className="mb-4 flex flex-wrap items-center gap-3 justify-between">
+                  <div className="mb-4 flex flex-wrap w-full items-center gap-3">
                     <input
                       type="text"
                       placeholder="Search in file..."
                       value={searchTerm}
                       onChange={(e) => handleSearchChange(e)}
-                      className="w-full max-w-sm text-sm px-3 py-2 rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                      className="h-10 w-full text-sm px-3 py-2 rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
                     />
-                    <button
-                      type="button"
-                      className="text-xs text-muted-foreground underline"
-                      onClick={() => setShowRawData((prev) => !prev)}
-                    >
-                      {showRawData ? "View Syntax Highlighted" : "View Raw"}
-                    </button>
                   </div>
 
                   <CodeEditorPanel
@@ -673,14 +704,16 @@ export default function FileViewerPanel({
                   />
                 </div>
 
-                <FileInsightsSidebar
-                  selectedFileNode={selectedFileNode}
-                  graphData={graphData}
-                  setSelectedPath={setSelectedPath}
-                  showDocs={showDocs}
-                  setShowDocs={setShowDocs}
-                  scrollToLine={scrollToLine}
-                />
+                <div className="min-h-0 h-full overflow-y-auto lg:min-w-0">
+                  <FileInsightsSidebar
+                    selectedFileNode={selectedFileNode}
+                    graphData={graphData}
+                    setSelectedPath={setSelectedPath}
+                    showDocs={showDocs}
+                    setShowDocs={setShowDocs}
+                    jumpToLine={jumpToLine}
+                  />
+                </div>
               </div>
             ) : readmeContent ? (
               <>
@@ -709,11 +742,7 @@ export default function FileViewerPanel({
               </p>
             )
           ) : (
-            // <div className="bg-card border rounded-xl p-3 h-full flex flex-col">
             <>
-              <h3 className="text-sm font-semibold mb-2">
-                Code Intelligence Graph
-              </h3>
               <div className="flex-1 overflow-hidden">
                 <FlowVisualizer
                   graphData={graphData}
@@ -724,7 +753,6 @@ export default function FileViewerPanel({
                 />
               </div>
             </>
-            // </div>
           )}
         </div>
       </div>

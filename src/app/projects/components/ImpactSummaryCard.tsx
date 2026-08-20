@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { AlertTriangle, FileWarning, Flame, GitBranch } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { ImpactDetailsDrawer } from "./ImpactDetailsDrawer";
 import type { FlowGraph } from "@/app/api/lib/analyzer/types";
 
@@ -80,11 +79,12 @@ export function ImpactSummaryCard({ graph, onFileChange }: Props) {
               }
             />
 
-            <InfoStat
+            {/* TODO: fix dead files logic later. */}
+            {/* <InfoStat
               icon={<FileWarning className="w-4 h-4" />}
               label="Dead Files"
               value={deadCount}
-            />
+            /> */}
 
             <InfoStat
               icon={<GitBranch className="w-4 h-4" />}

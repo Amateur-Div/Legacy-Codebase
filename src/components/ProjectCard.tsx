@@ -34,7 +34,7 @@ export default function ProjectCard({
       }}
       className="
         group
-        cursor-pointer
+        active:scale-[0.98]
         border-border
         transition-all
         duration-200
@@ -43,10 +43,11 @@ export default function ProjectCard({
         hover:bg-muted/30
         focus-visible:ring-2
         focus-visible:ring-primary
+        focus-visible:ring-offset-2
       "
     >
-      <CardContent className="p-5 space-y-4">
-        <div className="flex items-start gap-3 min-w-0">
+      <CardContent className="p-5 space-y-5">
+        <div className="flex items-start justify-between gap-3">
           <div className="mt-0.5 shrink-0">
             <Folder
               size={20}
@@ -55,7 +56,9 @@ export default function ProjectCard({
           </div>
 
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-base font-semibold">{projectName}</h2>
+            <h2 className="text-base font-semibold leading-6 line-clamp-2 break-all">
+              {projectName}
+            </h2>
           </div>
         </div>
 

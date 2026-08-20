@@ -48,8 +48,8 @@ export function ImpactDetailsDrawer({ graph, fileId, onClose }: Props) {
   return (
     <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-[420px] border-l bg-background shadow-2xl">
       <div className="flex h-full flex-col">
-        <div className="flex items-start justify-between border-b px-6 py-5">
-          <div className="space-y-1">
+        <div className="flex items-start justify-between gap-3 border-b px-6 py-5">
+          <div className="min-w-0 flex-1 space-y-1">
             <h2 className="text-lg font-semibold">Impact Details</h2>
 
             <p className="text-xs text-muted-foreground break-all">
@@ -59,7 +59,7 @@ export function ImpactDetailsDrawer({ graph, fileId, onClose }: Props) {
 
           <button
             onClick={onClose}
-            className="rounded-md p-2 hover:bg-muted transition-colors"
+            className="shrink-0 rounded-md p-2 hover:bg-muted transition-colors"
           >
             <X className="h-4 w-4 text-muted-foreground" />
           </button>

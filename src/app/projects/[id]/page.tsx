@@ -20,6 +20,19 @@ import { useFileHandler } from "@/hooks/useFileHandler";
 import { getLanguage } from "../utils/language";
 import ProjectWorkspaceTabs from "../components/ProjectWorkspaceTabs";
 import { FlowGraph } from "@/app/api/lib/analyzer/types";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { Trash2 } from "lucide-react";
 
 export default function ProjectDetailPage() {
   const router = useRouter();
@@ -78,7 +91,6 @@ export default function ProjectDetailPage() {
     if (project?.projectName) {
       setNewName(project.projectName);
     }
-    console.log(project);
   }, [project]);
 
   useEffect(() => {
@@ -111,11 +123,6 @@ export default function ProjectDetailPage() {
   }, [graphReady, isLoaded, project]);
 
   const handleDelete = async () => {
-    const confirmDelete = window.confirm(
-      "Are you sure you want to delete this project?",
-    );
-    if (!confirmDelete) return;
-
     const token = await getAuth().currentUser?.getIdToken();
     const res = await fetch(`/api/project?id=${projectId}`, {
       method: "DELETE",
@@ -164,6 +171,44 @@ export default function ProjectDetailPage() {
     );
   }
 
+  if (jobStatus === "error") {
+    return (
+      <div className="flex flex-col items-center justify-center h-[70vh] text-red-600">
+        <p className="text-lg font-semibold">
+          Analysis Failed Something went wrong while analysing your repository.
+          Please try uploading repository again.
+        </p>
+        <p className="text-sm">{jobMessage}</p>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              variant="outline"
+              className="w-36 hover:bg-red-600 hover:text-white"
+            >
+              <Trash2 size={14} className="mr-2" />
+              Delete Project
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Project</AlertDialogTitle>
+              <AlertDialogDescription>Analysis failed.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-red-600 text-white hover:bg-red-700"
+                onClick={handleDelete}
+              >
+                Confirm
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    );
+  }
+
   if (!project.analysisComplete) {
     return (
       <div className="flex flex-col items-center justify-center h-[70vh] space-y-6">
@@ -194,21 +239,12 @@ export default function ProjectDetailPage() {
     );
   }
 
-  if (jobStatus === "error") {
-    return (
-      <div className="flex flex-col items-center justify-center h-[70vh] text-red-600">
-        <p className="text-lg font-semibold">Analysis Failed</p>
-        <p className="text-sm">{jobMessage}</p>
-      </div>
-    );
-  }
-
   const filteredTree = project?.fileTree
     ? filterFileTree(project.fileTree, searchTerm)
     : [];
 
   return (
-    <div className="p-6 space-y-6 min-h-screen">
+    <div className="min-h-screen space-y-6 px-4 py-5 sm:p-6">
       <ProjectHeader
         projectName={project.projectName}
         projectId={projectId}
@@ -230,7 +266,7 @@ export default function ProjectDetailPage() {
       />
 
       {activeView === "overview" && (
-        <div className="space-y-8">
+        <div className="space-y-6">
           <div className="col-span-12 lg:col-span-4">
             <ProjectOverview
               summary={readmeSummary}
@@ -244,7 +280,7 @@ export default function ProjectDetailPage() {
 
       {activeView === "explorer" && (
         <div className="grid grid-cols-12 gap-6 items-stretch min-h-[900px]">
-          <div className="col-span-12 lg:col-span-5 flex">
+          <div className="col-span-12 xl:col-span-5 flex min-w-0">
             <ProjectFilesPanel
               project={project}
               setLine={setLine}
@@ -258,7 +294,7 @@ export default function ProjectDetailPage() {
             />
           </div>
 
-          <div className="col-span-12 lg:col-span-7 flex">
+          <div className="col-span-12 xl:col-span-7 flex min-w-0">
             <FileViewerPanel
               projectId={project._id}
               project={project}

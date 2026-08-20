@@ -20,7 +20,7 @@ new Worker(
   async (bullJob) => {
     let job = await loadJob(bullJob.data.jobId);
 
-    if (!job || job.status === "done") return;
+    if (!job || job.status === "done" || job.error) return;
 
     await saveJob({
       id: job.id,

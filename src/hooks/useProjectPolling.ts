@@ -35,7 +35,7 @@ export function useProjectPolling(projectId: string) {
 
         setJobStatus(job.status);
         setJobProgress(job.progress || 0);
-        setJobMessage(job.message || "Processing...");
+        setJobMessage(job.message || "Analysing repository...");
 
         if (job.status === "done") {
           setGraphReady(true);
@@ -43,7 +43,6 @@ export function useProjectPolling(projectId: string) {
         }
 
         if (job.status === "error") {
-          setJobStatus("error");
           return true;
         }
       } catch (err) {

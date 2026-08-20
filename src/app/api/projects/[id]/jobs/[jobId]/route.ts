@@ -9,7 +9,7 @@ export async function GET(
   const { params } = await context;
   const { jobId } = await params;
 
-  const token = req.nextUrl.searchParams.get("token");
+  const token = req.headers.get("Authorization")?.split("Bearer ")[1];
   const { uid } = await authMiddleware(token);
 
   const job = await loadJobForOwner(jobId, uid);

@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ObjectId } from "bson";
 import { authMiddleware } from "@/lib/auth-server";
-import fs from "fs";
-import path from "path";
 import clientPromise from "@/lib/mongoClient";
 
 export async function GET(req: NextRequest) {
@@ -34,6 +32,7 @@ export async function GET(req: NextRequest) {
       impactMap: project.impactMap,
       stats: project.stats ?? null,
       tags: project.tags ?? [],
+      jobId: project.jobId,
       analysisComplete: project.analysisComplete,
       project,
     });
@@ -59,17 +58,20 @@ export async function DELETE(req: NextRequest) {
       ownerId: uid,
     });
 
-    await db.collection("graphs").deleteOne({ projectId: project?.projectId });
-
     if (!project)
       return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     await db.collection("projects").deleteOne({ _id: new ObjectId(id) });
 
-    const folderPath = path.join(process.cwd(), "project_uploads", id);
-    if (fs.existsSync(folderPath)) {
-      fs.rmSync(folderPath, { recursive: true });
-    }
+    await db.collection("graphs").deleteOne({ projectId: project?.projectId });
+
+    await db.collection("jobs").deleteOne({ projectId: project?.projectId });
+
+    await db.collection("comments").deleteMany({ projectId: id });
+
+    await db
+      .collection("project_files")
+      .deleteMany({ projectId: project?.projectId });
 
     return NextResponse.json({ success: true });
   } catch (err) {
@@ -84,13 +86,11 @@ export async function PATCH(req: NextRequest) {
     const { uid } = await authMiddleware(token);
 
     const body = await req.json();
-    const id = req.nextUrl.searchParams.get("id");
-    const { newName, tags } = body;
+    const { id, newName, tags } = body;
 
     if (!id) {
       return NextResponse.json({ error: "Missing ID" }, { status: 400 });
     }
-
     const updateFields: any = {};
     if (typeof newName === "string" && newName.trim() !== "") {
       updateFields.projectName = newName.trim();

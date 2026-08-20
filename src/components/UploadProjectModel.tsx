@@ -55,8 +55,14 @@ export default function UploadProjectModal({ open, onClose }: Props) {
     formData.append("file", file);
 
     try {
-      const token = await auth.currentUser?.getIdToken(true);
+      const user = auth.currentUser;
 
+      if (!user) {
+        toast.error("Please log in again.");
+        return;
+      }
+
+      const token = await user.getIdToken(true);
       const res = await fetch("/api/upload", {
         method: "POST",
         body: formData,
@@ -69,9 +75,15 @@ export default function UploadProjectModal({ open, onClose }: Props) {
       setJobId(result.jobId);
 
       if (res.ok) {
-        toast.success(`${file.name} uploaded successfully!`);
+        toast.success(
+          "Repository uploaded successfully. Analysis will begin shortly.",
+        );
         setFile(null);
         onClose();
+
+        if (inputRef.current) {
+          inputRef.current.value = "";
+        }
       } else {
         toast.error(`Upload failed: ${result?.error || "Unknown error"}`);
       }
@@ -92,10 +104,10 @@ export default function UploadProjectModal({ open, onClose }: Props) {
         }
       }}
     >
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="w-[95vw] max-w-md p-6">
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold">
-            Upload Project
+            Upload Repository
           </DialogTitle>
         </DialogHeader>
 
@@ -113,7 +125,7 @@ export default function UploadProjectModal({ open, onClose }: Props) {
             validateAndSetFile(dropped);
           }}
           className={clsx(
-            "group rounded-2xl border border-dashed p-8 text-center transition-all duration-200 cursor-pointer",
+            "group rounded-2xl border border-dashed min-h-[220px] px-6 py-8 text-center transition-all duration-200 cursor-pointer",
             dragOver && "border-primary bg-primary/5 scale-[1.01]",
             file && "border-green-500 bg-green-500/5",
             !dragOver && !file && "hover:bg-muted/40 hover:border-primary/40",
@@ -126,15 +138,16 @@ export default function UploadProjectModal({ open, onClose }: Props) {
                 ? "scale-110 text-primary"
                 : "text-muted-foreground group-hover:text-primary",
             )}
-            size={34}
+            size={42}
           />
           <div className="space-y-1">
-            <p className="text-sm font-medium">
+            <p className="text-sm font-medium break-all line-clamp-2">
               {file ? file.name : "Click or drag a ZIP file here to upload"}
             </p>
             <p className="text-xs text-muted-foreground">
-              Upload a compressed repository archive
+              Upload a ZIP archive containing your project repository.
             </p>
+            <p className="text-xs">Maximum supported size: 100 MB</p>
           </div>
         </div>
 
@@ -154,7 +167,7 @@ export default function UploadProjectModal({ open, onClose }: Props) {
           {uploading ? (
             <>
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Uploading...
+              Uploading repository...
             </>
           ) : (
             "Upload"

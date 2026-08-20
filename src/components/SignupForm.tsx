@@ -27,6 +27,7 @@ import { motion } from "framer-motion";
 import { useAuth } from "@/context/AuthContext";
 import { useRedirectIfAuthenticated } from "@/hooks/useRedirectIfAuthenticated";
 import loader from "@/utils/loader";
+import { FirebaseError } from "firebase/app";
 
 const signupSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -52,14 +53,16 @@ export default function SignupPage() {
 
   const [loading, setLoading] = useState(false);
 
-  const setFirebaseError = (errors: any) => {
-    switch (errors.message) {
-      case "Firebase: Error (auth/network-request-failed).":
+  const getFirebaseError = (error: FirebaseError) => {
+    switch (error.code) {
+      case "auth/network-request-failed":
         return "Check your internet connection.";
-      case "Firebase: Error (auth/email-already-in-use).":
-        return "That email is already in use , please use different email.";
+
+      case "auth/email-already-in-use":
+        return "That email is already in use. Please use a different email.";
+
       default:
-        break;
+        return "Something went wrong.";
     }
   };
 
@@ -84,12 +87,18 @@ export default function SignupPage() {
         role: "user",
       });
 
-      toast.success("Account created! Please verify your email.");
+      toast.success(
+        "Account created successfully! Please verify your email before logging in.",
+      );
       router.replace("/login");
-    } catch (err: any) {
-      const error = setFirebaseError(err);
-      toast.error(error || "Something went wrong.");
-      console.error(err);
+    } catch (err: unknown) {
+      if (err instanceof FirebaseError) {
+        toast.error(getFirebaseError(err));
+        console.error(err);
+      } else {
+        toast.error("Something went wrong.");
+        console.error(err);
+      }
     } finally {
       setLoading(false);
     }
@@ -107,7 +116,9 @@ export default function SignupPage() {
         className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 shadow-2xl rounded-2xl overflow-hidden bg-white"
       >
         <div className="hidden md:flex flex-col items-center justify-center bg-gradient-to-br from-purple-600 to-pink-600 p-10 text-white">
-          <h2 className="text-3xl font-bold mb-4">Join the Future 🚀</h2>
+          <h2 className="text-3xl font-bold mb-4">
+            Understand Legacy Code Faster 🚀
+          </h2>
           <p className="text-lg text-center opacity-90">
             Create your account and experience a smarter way to handle legacy
             codebases.
@@ -117,7 +128,7 @@ export default function SignupPage() {
         <Card className="rounded-none border-0">
           <CardHeader className="text-center mt-6">
             <h2 className="text-2xl font-semibold">Create your account</h2>
-            <p className="text-sm text-gray-500">let's get you started</p>
+            <p className="text-sm text-gray-500">Let's get you started</p>
           </CardHeader>
 
           <CardContent className="space-y-4 px-6">
@@ -128,6 +139,7 @@ export default function SignupPage() {
                   id="name"
                   {...register("name")}
                   placeholder="Full Name"
+                  autoComplete="name"
                 />
                 {errors.name && (
                   <p className="text-sm text-red-500">{errors.name.message}</p>
@@ -141,6 +153,7 @@ export default function SignupPage() {
                   type="email"
                   {...register("email")}
                   placeholder="you@example.com"
+                  autoComplete="email"
                 />
                 {errors.email && (
                   <p className="text-sm text-red-500">{errors.email.message}</p>
@@ -154,6 +167,7 @@ export default function SignupPage() {
                   type="password"
                   {...register("password")}
                   placeholder="••••••••"
+                  autoComplete="new-password"
                 />
                 {errors.password && (
                   <p className="text-sm text-red-500">

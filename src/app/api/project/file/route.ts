@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import clientPromise from "@/lib/mongoClient";
-import { ObjectId } from "bson";
 import { authMiddleware } from "@/lib/auth-server";
 import path from "path";
 import { rewriteImportsAST } from "../../lib/refactorImports";
 import { attachCrossFileImpact } from "../../lib/buildCrossFileImpactMap";
+import { ObjectId } from "bson";
 
 export async function GET(req: NextRequest) {
   try {
@@ -247,7 +247,9 @@ export async function DELETE(req: NextRequest) {
 
     const db = (await clientPromise).db();
 
-    const project = await db.collection("projects").findOne({ projectId });
+    const project = await db
+      .collection("projects")
+      .findOne({ _id: new ObjectId(projectId) });
     if (!project) throw new Error("Project not found");
 
     let updatedTree = deleteFromTree(project.fileTree, oldPath);
