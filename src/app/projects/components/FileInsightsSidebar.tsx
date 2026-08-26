@@ -231,9 +231,9 @@ export default function FileInsightsSidebar({
           <CardContent className="space-y-4 text-sm">
             <div>
               <div className="font-medium text-gray-700 mb-1">Imports</div>
-              {selectedFileNode.impact?.imports?.length ? (
+              {selectedFileNode?.impact?.imports?.length ? (
                 <ul className="ml-4 list-disc space-y-1 text-gray-600 break-all">
-                  {selectedFileNode.impact.imports.map((imp: string) => (
+                  {selectedFileNode?.impact.imports.map((imp: string) => (
                     <li
                       key={imp}
                       className="cursor-pointer hover:text-gray-900 hover:underline"
@@ -250,9 +250,9 @@ export default function FileInsightsSidebar({
 
             <div>
               <div className="font-medium text-gray-700 mb-1">Used By</div>
-              {selectedFileNode.impact?.usedBy.length ? (
+              {selectedFileNode?.impact?.usedBy.length ? (
                 <ul className="ml-4 list-disc space-y-1 text-gray-600 break-all">
-                  {selectedFileNode.impact.usedBy.map((file: string) => (
+                  {selectedFileNode?.impact.usedBy.map((file: string) => (
                     <li
                       key={file}
                       className="cursor-pointer hover:text-gray-900 hover:underline"
@@ -267,14 +267,14 @@ export default function FileInsightsSidebar({
               )}
             </div>
 
-            {selectedFileNode.impact?.brokenImports?.length > 0 && (
+            {selectedFileNode?.impact?.brokenImports?.length > 0 && (
               <div className="rounded-xl border border-red-200 bg-red-50 p-3">
                 <div className="flex items-center gap-2 font-medium text-red-700 mb-1">
                   ⚠ Broken Imports
                 </div>
 
                 <ul className="ml-4 list-disc space-y-1 text-red-600">
-                  {selectedFileNode.impact.brokenImports.map(
+                  {selectedFileNode?.impact.brokenImports.map(
                     (b: { source: string }, i: number) => (
                       <li key={i} className="break-all font-mono text-xs">
                         {b.source}

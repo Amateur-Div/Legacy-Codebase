@@ -91,6 +91,8 @@ export default function ProjectDetailPage() {
     if (project?.projectName) {
       setNewName(project.projectName);
     }
+
+    console.log(project);
   }, [project]);
 
   useEffect(() => {

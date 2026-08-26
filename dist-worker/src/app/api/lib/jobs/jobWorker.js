@@ -20,7 +20,8 @@ const language_1 = require("../language");
 const graphStore_1 = require("../graph/graphStore");
 const uploadHelpers_1 = require("../uploadHelpers");
 const extractCache_1 = require("../cache/extractCache");
-const CHUNK_SIZE = 20;
+const normalizeGraphIds_1 = require("../analyzer/normalizeGraphIds");
+const CHUNK_SIZE = 50;
 function isBinaryFile(buffer) {
     return buffer.includes(0);
 }
@@ -243,7 +244,7 @@ async function runJobStep(job) {
                     if (/\.(js|ts|jsx|tsx)$/.test(absPath)) {
                         const result = await withTimeout((0, instrumentExecutionBabel_1.instrumentExecutionBabel)(content), 5000);
                         if ((result === null || result === void 0 ? void 0 : result.nodes) && (result === null || result === void 0 ? void 0 : result.edges)) {
-                            graph = result;
+                            graph = (0, normalizeGraphIds_1.normalizeGraphIds)(result, relPath);
                         }
                     }
                 }
@@ -403,6 +404,15 @@ async function runJobStep(job) {
             });
             return;
         }
+        console.log("[save] Graph size:", {
+            nodes: finalGraph.nodes.length,
+            edges: finalGraph.edges.length,
+        });
+        const graphJson = JSON.stringify(finalGraph);
+        console.log("[save] Graph JSON size:", {
+            bytes: Buffer.byteLength(graphJson, "utf-8"),
+            mb: (Buffer.byteLength(graphJson, "utf-8") / 1024 / 1024).toFixed(2),
+        });
         await (0, graphStore_1.saveGraph)(job.projectId, finalGraph, job.ownerId);
         await (0, jobStore_1.saveJob)({
             ...job,

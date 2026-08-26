@@ -5,6 +5,87 @@ type ForwardImpact = {
   brokenImports: { source: string }[];
 };
 
+export type ModuleResolution =
+  | {
+      kind: "internal";
+      path: string;
+      source: string;
+    }
+  | {
+      kind: "external";
+      source: string;
+    }
+  | {
+      kind: "unresolved";
+      source: string;
+    };
+
+export function resolveModule(
+  importer: string,
+  specifier: string,
+  fileLookup: Map<string, string>,
+  repoRoot: string,
+): ModuleResolution {
+  const importerDir = path.posix.dirname(importer);
+
+  const candidate = specifier.startsWith(".")
+    ? path.posix.normalize(path.posix.join(importerDir, specifier))
+    : path.posix.normalize(path.posix.join(repoRoot, specifier));
+
+  const direct = fileLookup.get(candidate);
+
+  if (direct) {
+    return {
+      kind: "internal",
+      path: direct,
+      source: specifier,
+    };
+  }
+
+  const extensionless = candidate.replace(/\.(js|jsx|ts|tsx)$/, "");
+
+  const withoutExtension = fileLookup.get(extensionless);
+
+  if (withoutExtension) {
+    return {
+      kind: "internal",
+      path: withoutExtension,
+      source: specifier,
+    };
+  }
+
+  const indexCandidates = [
+    `${candidate}/index.ts`,
+    `${candidate}/index.tsx`,
+    `${candidate}/index.js`,
+    `${candidate}/index.jsx`,
+  ];
+
+  for (const indexCandidate of indexCandidates) {
+    const resolvedIndex = fileLookup.get(indexCandidate);
+
+    if (resolvedIndex) {
+      return {
+        kind: "internal",
+        path: resolvedIndex,
+        source: specifier,
+      };
+    }
+  }
+
+  if (!specifier.startsWith(".")) {
+    return {
+      kind: "external",
+      source: specifier,
+    };
+  }
+
+  return {
+    kind: "unresolved",
+    source: specifier,
+  };
+}
+
 export function attachCrossFileImpact(fileTree: any[]) {
   const files: {
     relPath: string;
@@ -20,9 +101,7 @@ export function attachCrossFileImpact(fileTree: any[]) {
           ? node.imports
               .map((i: any) => (typeof i === "string" ? i : i?.name))
               .filter(
-                (imp: string) =>
-                  typeof imp === "string" &&
-                  (imp.startsWith("./") || imp.startsWith("../"))
+                (imp: string) => typeof imp === "string" && imp.length > 0,
               )
           : [];
         files.push({
@@ -36,6 +115,8 @@ export function attachCrossFileImpact(fileTree: any[]) {
     }
   };
   collect(fileTree);
+
+  const repoRoot = files.length ? files[0].relPath.split("/")[0] : "";
 
   const fileLookup = new Map<string, string>();
 
@@ -53,38 +134,38 @@ export function attachCrossFileImpact(fileTree: any[]) {
   const forwardMap: Record<string, ForwardImpact> = {};
   const reverseMap: Record<string, string[]> = {};
 
-  const resolveImport = (importer: string, imp: string): string | null => {
-    if (!imp.startsWith(".")) return null;
-
-    const importerDir = path.posix.dirname(importer);
-    const candidate = path.posix.normalize(path.posix.join(importerDir, imp));
-
-    return (
-      fileLookup.get(candidate) ||
-      fileLookup.get(candidate.replace(/\.(js|jsx|ts|tsx)$/, "")) ||
-      null
-    );
-  };
-
   for (const { relPath, imports } of files) {
     const resolvedImports: string[] = [];
     const brokenImports: { source: string }[] = [];
 
     for (const imp of imports) {
-      const resolved = resolveImport(relPath, imp);
+      const resolution = resolveModule(relPath, imp, fileLookup, repoRoot);
 
-      if (!resolved) {
-        brokenImports.push({ source: imp });
+      if (resolution.kind === "external") {
         continue;
       }
 
-      if (resolved === relPath) continue;
+      if (resolution.kind === "unresolved") {
+        brokenImports.push({
+          source: imp,
+        });
+        continue;
+      }
+
+      const resolved = resolution.path;
+
+      if (!resolved || resolved === relPath) {
+        continue;
+      }
 
       if (!resolvedImports.includes(resolved)) {
         resolvedImports.push(resolved);
       }
 
-      if (!reverseMap[resolved]) reverseMap[resolved] = [];
+      if (!reverseMap[resolved]) {
+        reverseMap[resolved] = [];
+      }
+
       if (!reverseMap[resolved].includes(relPath)) {
         reverseMap[resolved].push(relPath);
       }
@@ -107,7 +188,7 @@ export function attachCrossFileImpact(fileTree: any[]) {
   console.log(
     `[impact] attached forward=${Object.keys(forwardMap).length}, reverse=${
       Object.keys(reverseMap).length
-    }`
+    }`,
   );
 
   return fileTree;

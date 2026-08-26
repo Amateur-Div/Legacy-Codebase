@@ -27,8 +27,9 @@ import {
   getProjectCachePath,
   touchCache,
 } from "../cache/extractCache";
+import { normalizeGraphIds } from "../analyzer/normalizeGraphIds";
 
-const CHUNK_SIZE = 20;
+const CHUNK_SIZE = 50;
 
 function isBinaryFile(buffer: Buffer) {
   return buffer.includes(0);
@@ -321,7 +322,7 @@ export async function runJobStep(job: any) {
               );
 
               if (result?.nodes && result?.edges) {
-                graph = result;
+                graph = normalizeGraphIds(result, relPath);
               }
             }
           } catch {}
@@ -527,6 +528,17 @@ export async function runJobStep(job: any) {
       });
       return;
     }
+
+    console.log("[save] Graph size:", {
+      nodes: finalGraph.nodes.length,
+      edges: finalGraph.edges.length,
+    });
+
+    const graphJson = JSON.stringify(finalGraph);
+    console.log("[save] Graph JSON size:", {
+      bytes: Buffer.byteLength(graphJson, "utf-8"),
+      mb: (Buffer.byteLength(graphJson, "utf-8") / 1024 / 1024).toFixed(2),
+    });
 
     await saveGraph(job.projectId, finalGraph, job.ownerId);
 

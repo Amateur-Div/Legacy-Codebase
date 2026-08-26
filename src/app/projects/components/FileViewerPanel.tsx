@@ -104,6 +104,10 @@ export default function FileViewerPanel({
     [fileContent],
   );
 
+  useEffect(() => {
+    console.log(selectedFileNode);
+  }, [selectedFileNode]);
+
   const isLargeFile = lineCount > 1000;
 
   useEffect(() => {
