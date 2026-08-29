@@ -5,6 +5,7 @@ import clientPromise from "../../../../lib/mongoClient";
 import { saveJob } from "./jobStore";
 import { instrumentExecutionBabel } from "../instrumentExecutionBabel";
 import { mergeFileGraphs } from "../analyzer/mergeFileGraph";
+import { normalizeGraphIds } from "../analyzer/normalizeGraphIds";
 import { attachCrossFileImpact } from "../buildCrossFileImpactMap";
 import { injectFileDependencyEdges } from "../analyzer/injectFileDependencyEdges";
 import { enrichGraphSemantics } from "../analyzer/enrichGraphSemantics";
