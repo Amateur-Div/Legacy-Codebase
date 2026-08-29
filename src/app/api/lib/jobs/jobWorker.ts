@@ -28,7 +28,6 @@ import {
   getProjectCachePath,
   touchCache,
 } from "../cache/extractCache";
-import { normalizeGraphIds } from "../analyzer/normalizeGraphIds";
 
 const CHUNK_SIZE = 50;
 
