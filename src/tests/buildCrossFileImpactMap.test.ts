@@ -3,6 +3,11 @@ import { resolveModule } from "../app/api/lib/buildCrossFileImpactMap";
 
 const repoRoot = "repo";
 
+const baseUrlResolverConfig = {
+  baseUrl: ".",
+  paths: [],
+};
+
 const fileLookup = new Map<string, string>([
   ["repo/src/foo.ts", "repo/src/foo.ts"],
   ["repo/src/foo", "repo/src/foo.ts"],
@@ -30,6 +35,7 @@ describe("resolveModule", () => {
       "./foo",
       fileLookup,
       repoRoot,
+      baseUrlResolverConfig,
     );
 
     expect(result).toEqual({
@@ -45,6 +51,7 @@ describe("resolveModule", () => {
       "../utils/bem",
       fileLookup,
       repoRoot,
+      baseUrlResolverConfig,
     );
 
     expect(result).toEqual({
@@ -60,6 +67,7 @@ describe("resolveModule", () => {
       "utils/bem",
       fileLookup,
       repoRoot,
+      baseUrlResolverConfig,
     );
 
     expect(result).toEqual({
@@ -75,6 +83,7 @@ describe("resolveModule", () => {
       "components/Button",
       fileLookup,
       repoRoot,
+      baseUrlResolverConfig,
     );
 
     expect(result).toEqual({
@@ -90,6 +99,7 @@ describe("resolveModule", () => {
       "components/Card",
       fileLookup,
       repoRoot,
+      baseUrlResolverConfig,
     );
 
     expect(result).toEqual({
@@ -105,6 +115,7 @@ describe("resolveModule", () => {
       "react",
       fileLookup,
       repoRoot,
+      baseUrlResolverConfig,
     );
 
     expect(result).toEqual({
@@ -119,6 +130,7 @@ describe("resolveModule", () => {
       "./does-not-exist",
       fileLookup,
       repoRoot,
+      baseUrlResolverConfig,
     );
 
     expect(result).toEqual({

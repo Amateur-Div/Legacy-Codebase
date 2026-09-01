@@ -151,20 +151,52 @@ function isNonRuntimeFile(filePath) {
     ];
     return patterns.some((pattern) => p.includes(pattern));
 }
-function findDeadFiles(graph, entryFileIds = new Set()) {
-    const incoming = buildIncomingImportCount(graph);
-    const deadFiles = [];
-    for (const node of graph.nodes) {
-        if (node.type !== "file")
+function findDeadFiles(graph, options = {}) {
+    var _a, _b, _c;
+    const entryFileIds = (_a = options.entryFileIds) !== null && _a !== void 0 ? _a : new Set();
+    const candidateFileIds = (_b = options.candidateFileIds) !== null && _b !== void 0 ? _b : new Set(graph.nodes.filter((node) => node.type === "file").map((node) => node.id));
+    if (entryFileIds.size === 0) {
+        return [];
+    }
+    const nodeIds = new Set(graph.nodes.map((node) => node.id));
+    const importsFrom = new Map();
+    for (const edge of graph.edges) {
+        if (edge.label !== "imports")
             continue;
-        const hasIncoming = incoming.has(node.id);
-        if (!hasIncoming && !entryFileIds.has(node.id)) {
-            if (!isNonRuntimeFile(node.id)) {
-                deadFiles.push(node.id);
-            }
+        if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
+            continue;
+        }
+        const fromNode = graph.nodes.find((node) => node.id === edge.from);
+        const toNode = graph.nodes.find((node) => node.id === edge.to);
+        if ((fromNode === null || fromNode === void 0 ? void 0 : fromNode.type) !== "file" || (toNode === null || toNode === void 0 ? void 0 : toNode.type) !== "file") {
+            continue;
+        }
+        const existing = importsFrom.get(edge.from);
+        if (existing) {
+            existing.push(edge.to);
+        }
+        else {
+            importsFrom.set(edge.from, [edge.to]);
         }
     }
-    return deadFiles;
+    const reachable = new Set();
+    const queue = [];
+    for (const entryId of entryFileIds) {
+        if (!nodeIds.has(entryId))
+            continue;
+        reachable.add(entryId);
+        queue.push(entryId);
+    }
+    while (queue.length > 0) {
+        const current = queue.shift();
+        for (const next of (_c = importsFrom.get(current)) !== null && _c !== void 0 ? _c : []) {
+            if (reachable.has(next))
+                continue;
+            reachable.add(next);
+            queue.push(next);
+        }
+    }
+    return Array.from(candidateFileIds).filter((fileId) => !reachable.has(fileId));
 }
 function countIncomingImports(graph) {
     const counts = new Map();

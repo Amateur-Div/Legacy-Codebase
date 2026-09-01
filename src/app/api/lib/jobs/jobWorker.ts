@@ -28,6 +28,11 @@ import {
   getProjectCachePath,
   touchCache,
 } from "../cache/extractCache";
+import {
+  createModuleResolverConfig,
+  type ModuleResolverConfig,
+} from "../analyzer/moduleResolverConfig";
+import { isDeadFileCandidateRole } from "../analyzer/fileRoleClassifier";
 
 const CHUNK_SIZE = 50;
 
@@ -178,6 +183,25 @@ export async function runJobStep(job: any) {
       path.relative(root, abs).split(path.sep).join("/"),
     );
 
+    let resolverConfig: ModuleResolverConfig = {
+      baseUrl: "",
+      paths: [],
+    };
+
+    const tsconfigPath = allFiles.find(
+      (file: string) =>
+        file === "tsconfig.json" || file.endsWith("/tsconfig.json"),
+    );
+
+    if (tsconfigPath) {
+      try {
+        const abs = path.join(root, tsconfigPath);
+        const parsed = JSON.parse(fs.readFileSync(abs, "utf-8"));
+
+        resolverConfig = createModuleResolverConfig(parsed);
+      } catch {}
+    }
+
     const fileTree = await buildFileTree(allFiles, root);
     const insights = calculateRepositoryInsights(fileTree);
 
@@ -224,6 +248,7 @@ export async function runJobStep(job: any) {
           packageInfo,
           entryPoints,
           tags,
+          resolverConfig,
         },
       },
     );
@@ -453,7 +478,8 @@ export async function runJobStep(job: any) {
 
     const fileTree = project?.fileTree || [];
 
-    attachCrossFileImpact(fileTree);
+    const resolverConfig = project?.resolverConfig ?? {};
+    attachCrossFileImpact(fileTree, resolverConfig);
 
     await db.collection("projects").updateOne(
       {
@@ -475,7 +501,56 @@ export async function runJobStep(job: any) {
       edges: styleGraphEdges(enriched.edges),
     };
 
-    const deadFiles = findDeadFiles(styled);
+    const entryPaths = new Set<string>();
+    const candidatePaths = new Set<string>();
+
+    const collectAnalysisRoots = (nodes: any[]) => {
+      for (const node of nodes) {
+        if (node.type === "file" && node.fullPath) {
+          if (node.entry?.isLikelyEntry && node.entry?.kind !== "cli") {
+            entryPaths.add(node.fullPath);
+          }
+
+          if (isDeadFileCandidateRole(node.role)) {
+            candidatePaths.add(node.fullPath);
+          }
+        }
+
+        if (Array.isArray(node.children)) {
+          collectAnalysisRoots(node.children);
+        }
+      }
+    };
+
+    collectAnalysisRoots(fileTree);
+
+    const entryFileIds = new Set(
+      styled.nodes
+        .filter(
+          (node: any) =>
+            node.type === "file" &&
+            typeof node.file === "string" &&
+            entryPaths.has(node.file),
+        )
+        .map((node: any) => node.id),
+    );
+
+    const candidateFileIds = new Set(
+      styled.nodes
+        .filter(
+          (node: any) =>
+            node.type === "file" &&
+            typeof node.file === "string" &&
+            candidatePaths.has(node.file),
+        )
+        .map((node: any) => node.id),
+    );
+
+    const deadFiles = findDeadFiles(styled, {
+      entryFileIds,
+      candidateFileIds,
+    });
+
     const circularDeps = findCircularDependencies(styled);
     const importanceRanking = computeFileImportance(styled).slice(0, 20);
 

@@ -11,6 +11,7 @@ const mongoClient_1 = __importDefault(require("../../../../lib/mongoClient"));
 const jobStore_1 = require("./jobStore");
 const instrumentExecutionBabel_1 = require("../instrumentExecutionBabel");
 const mergeFileGraph_1 = require("../analyzer/mergeFileGraph");
+const normalizeGraphIds_1 = require("../analyzer/normalizeGraphIds");
 const buildCrossFileImpactMap_1 = require("../buildCrossFileImpactMap");
 const injectFileDependencyEdges_1 = require("../analyzer/injectFileDependencyEdges");
 const enrichGraphSemantics_1 = require("../analyzer/enrichGraphSemantics");
@@ -20,7 +21,8 @@ const language_1 = require("../language");
 const graphStore_1 = require("../graph/graphStore");
 const uploadHelpers_1 = require("../uploadHelpers");
 const extractCache_1 = require("../cache/extractCache");
-const normalizeGraphIds_1 = require("../analyzer/normalizeGraphIds");
+const moduleResolverConfig_1 = require("../analyzer/moduleResolverConfig");
+const fileRoleClassifier_1 = require("../analyzer/fileRoleClassifier");
 const CHUNK_SIZE = 50;
 function isBinaryFile(buffer) {
     return buffer.includes(0);
@@ -62,7 +64,7 @@ function withTimeout(promise, ms = 5000) {
     ]);
 }
 async function runJobStep(job) {
-    var _a;
+    var _a, _b;
     if (job.status === "done")
         return;
     const db = (await mongoClient_1.default).db();
@@ -135,6 +137,19 @@ async function runJobStep(job) {
     if (job.step === "metadata") {
         const root = path_1.default.join(job.extractedPath, "repo");
         const allFiles = job.scanFiles.map((abs) => path_1.default.relative(root, abs).split(path_1.default.sep).join("/"));
+        let resolverConfig = {
+            baseUrl: "",
+            paths: [],
+        };
+        const tsconfigPath = allFiles.find((file) => file === "tsconfig.json" || file.endsWith("/tsconfig.json"));
+        if (tsconfigPath) {
+            try {
+                const abs = path_1.default.join(root, tsconfigPath);
+                const parsed = JSON.parse(fs_1.default.readFileSync(abs, "utf-8"));
+                resolverConfig = (0, moduleResolverConfig_1.createModuleResolverConfig)(parsed);
+            }
+            catch { }
+        }
         const fileTree = await (0, uploadHelpers_1.buildFileTree)(allFiles, root);
         const insights = (0, uploadHelpers_1.calculateRepositoryInsights)(fileTree);
         let packageInfo = null;
@@ -172,6 +187,7 @@ async function runJobStep(job) {
                 packageInfo,
                 entryPoints,
                 tags,
+                resolverConfig,
             },
         });
         await (0, jobStore_1.saveJob)({
@@ -348,7 +364,8 @@ async function runJobStep(job) {
             .collection("projects")
             .findOne({ projectId: job.projectId, members: job.ownerId });
         const fileTree = (project === null || project === void 0 ? void 0 : project.fileTree) || [];
-        (0, buildCrossFileImpactMap_1.attachCrossFileImpact)(fileTree);
+        const resolverConfig = (_b = project === null || project === void 0 ? void 0 : project.resolverConfig) !== null && _b !== void 0 ? _b : {};
+        (0, buildCrossFileImpactMap_1.attachCrossFileImpact)(fileTree, resolverConfig);
         await db.collection("projects").updateOne({
             projectId: job.projectId,
             members: job.ownerId,
@@ -363,7 +380,39 @@ async function runJobStep(job) {
             ...enriched,
             edges: (0, styleGraphEdges_1.styleGraphEdges)(enriched.edges),
         };
-        const deadFiles = (0, impactEngine_1.findDeadFiles)(styled);
+        const entryPaths = new Set();
+        const candidatePaths = new Set();
+        const collectAnalysisRoots = (nodes) => {
+            var _a, _b;
+            for (const node of nodes) {
+                if (node.type === "file" && node.fullPath) {
+                    if (((_a = node.entry) === null || _a === void 0 ? void 0 : _a.isLikelyEntry) && ((_b = node.entry) === null || _b === void 0 ? void 0 : _b.kind) !== "cli") {
+                        entryPaths.add(node.fullPath);
+                    }
+                    if ((0, fileRoleClassifier_1.isDeadFileCandidateRole)(node.role)) {
+                        candidatePaths.add(node.fullPath);
+                    }
+                }
+                if (Array.isArray(node.children)) {
+                    collectAnalysisRoots(node.children);
+                }
+            }
+        };
+        collectAnalysisRoots(fileTree);
+        const entryFileIds = new Set(styled.nodes
+            .filter((node) => node.type === "file" &&
+            typeof node.file === "string" &&
+            entryPaths.has(node.file))
+            .map((node) => node.id));
+        const candidateFileIds = new Set(styled.nodes
+            .filter((node) => node.type === "file" &&
+            typeof node.file === "string" &&
+            candidatePaths.has(node.file))
+            .map((node) => node.id));
+        const deadFiles = (0, impactEngine_1.findDeadFiles)(styled, {
+            entryFileIds,
+            candidateFileIds,
+        });
         const circularDeps = (0, impactEngine_1.findCircularDependencies)(styled);
         const importanceRanking = (0, impactEngine_1.computeFileImportance)(styled).slice(0, 20);
         const finalGraph = {

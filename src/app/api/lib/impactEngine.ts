@@ -193,27 +193,78 @@ function isNonRuntimeFile(filePath: string) {
   return patterns.some((pattern) => p.includes(pattern));
 }
 
+export type DeadFileAnalysisOptions = {
+  entryFileIds?: Set<string>;
+  candidateFileIds?: Set<string>;
+};
+
 export function findDeadFiles(
   graph: FlowGraph,
-  entryFileIds: Set<string> = new Set(),
+  options: DeadFileAnalysisOptions = {},
 ): string[] {
-  const incoming = buildIncomingImportCount(graph);
+  const entryFileIds = options.entryFileIds ?? new Set<string>();
 
-  const deadFiles: string[] = [];
+  const candidateFileIds =
+    options.candidateFileIds ??
+    new Set(
+      graph.nodes.filter((node) => node.type === "file").map((node) => node.id),
+    );
 
-  for (const node of graph.nodes) {
-    if (node.type !== "file") continue;
+  if (entryFileIds.size === 0) {
+    return [];
+  }
 
-    const hasIncoming = incoming.has(node.id);
+  const nodeIds = new Set(graph.nodes.map((node) => node.id));
 
-    if (!hasIncoming && !entryFileIds.has(node.id)) {
-      if (!isNonRuntimeFile(node.id)) {
-        deadFiles.push(node.id);
-      }
+  const importsFrom = new Map<string, string[]>();
+
+  for (const edge of graph.edges) {
+    if (edge.label !== "imports") continue;
+
+    if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
+      continue;
+    }
+
+    const fromNode = graph.nodes.find((node) => node.id === edge.from);
+    const toNode = graph.nodes.find((node) => node.id === edge.to);
+
+    if (fromNode?.type !== "file" || toNode?.type !== "file") {
+      continue;
+    }
+
+    const existing = importsFrom.get(edge.from);
+
+    if (existing) {
+      existing.push(edge.to);
+    } else {
+      importsFrom.set(edge.from, [edge.to]);
     }
   }
 
-  return deadFiles;
+  const reachable = new Set<string>();
+  const queue: string[] = [];
+
+  for (const entryId of entryFileIds) {
+    if (!nodeIds.has(entryId)) continue;
+
+    reachable.add(entryId);
+    queue.push(entryId);
+  }
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+
+    for (const next of importsFrom.get(current) ?? []) {
+      if (reachable.has(next)) continue;
+
+      reachable.add(next);
+      queue.push(next);
+    }
+  }
+
+  return Array.from(candidateFileIds).filter(
+    (fileId) => !reachable.has(fileId),
+  );
 }
 
 function countIncomingImports(graph: FlowGraph) {

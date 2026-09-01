@@ -20,73 +20,237 @@ export type ModuleResolution =
       source: string;
     };
 
+export type TsPathMapping = {
+  pattern: string;
+  targets: string[];
+};
+
+export type ModuleResolverConfig = {
+  baseUrl?: string;
+  paths?: TsPathMapping[];
+};
+
+const SOURCE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"] as const;
+
+function stripSourceExtension(value: string): string {
+  return value.replace(/\.(js|jsx|ts|tsx)$/, "");
+}
+
+function isRelativeSpecifier(specifier: string): boolean {
+  return (
+    specifier === "." ||
+    specifier === ".." ||
+    specifier.startsWith("./") ||
+    specifier.startsWith("../")
+  );
+}
+
+function isAliasPatternMatch(pattern: string, specifier: string): boolean {
+  if (pattern === specifier) {
+    return true;
+  }
+
+  if (!pattern.includes("*")) {
+    return false;
+  }
+
+  const [prefix, suffix] = pattern.split("*");
+
+  return specifier.startsWith(prefix) && specifier.endsWith(suffix);
+}
+
+function getAliasWildcardValue(
+  pattern: string,
+  specifier: string,
+): string | null {
+  const starIndex = pattern.indexOf("*");
+
+  if (starIndex === -1) {
+    return pattern === specifier ? "" : null;
+  }
+
+  const prefix = pattern.slice(0, starIndex);
+  const suffix = pattern.slice(starIndex + 1);
+
+  if (!specifier.startsWith(prefix) || !specifier.endsWith(suffix)) {
+    return null;
+  }
+
+  return specifier.slice(
+    prefix.length,
+    specifier.length - suffix.length || undefined,
+  );
+}
+
+function expandPathTarget(target: string, wildcardValue: string): string {
+  return target.replace(/\*/g, wildcardValue);
+}
+
+function candidatePaths(candidate: string): string[] {
+  const normalized = path.posix.normalize(candidate);
+
+  const candidates: string[] = [normalized, stripSourceExtension(normalized)];
+
+  for (const extension of SOURCE_EXTENSIONS) {
+    candidates.push(`${normalized}${extension}`);
+  }
+
+  for (const extension of SOURCE_EXTENSIONS) {
+    candidates.push(`${stripSourceExtension(normalized)}${extension}`);
+  }
+
+  for (const extension of SOURCE_EXTENSIONS) {
+    candidates.push(`${normalized}/index${extension}`);
+  }
+
+  return candidates;
+}
+
+function lookupInternalFile(
+  candidate: string,
+  fileLookup: Map<string, string>,
+): string | null {
+  for (const lookupCandidate of candidatePaths(candidate)) {
+    const resolved = fileLookup.get(lookupCandidate);
+
+    if (resolved) {
+      return resolved;
+    }
+  }
+
+  return null;
+}
+
+function resolveAlias(
+  specifier: string,
+  fileLookup: Map<string, string>,
+  repoRoot: string,
+  config: ModuleResolverConfig,
+): string | null {
+  for (const mapping of config.paths ?? []) {
+    if (!isAliasPatternMatch(mapping.pattern, specifier)) {
+      continue;
+    }
+
+    const wildcardValue =
+      getAliasWildcardValue(mapping.pattern, specifier) ?? "";
+
+    for (const target of mapping.targets) {
+      const expandedTarget = expandPathTarget(target, wildcardValue);
+
+      const baseUrl = config.baseUrl || ".";
+
+      const candidate = path.posix.normalize(
+        path.posix.join(repoRoot, baseUrl, expandedTarget),
+      );
+
+      const resolved = lookupInternalFile(candidate, fileLookup);
+
+      if (resolved) {
+        return resolved;
+      }
+    }
+
+    return null;
+  }
+
+  return null;
+}
+
 export function resolveModule(
   importer: string,
   specifier: string,
   fileLookup: Map<string, string>,
   repoRoot: string,
+  resolverConfig: ModuleResolverConfig = {},
 ): ModuleResolution {
-  const importerDir = path.posix.dirname(importer);
+  /*
+   * 1. Relative imports
+   */
+  if (isRelativeSpecifier(specifier)) {
+    const importerDir = path.posix.dirname(importer);
 
-  const candidate = specifier.startsWith(".")
-    ? path.posix.normalize(path.posix.join(importerDir, specifier))
-    : path.posix.normalize(path.posix.join(repoRoot, specifier));
+    const candidate = path.posix.normalize(
+      path.posix.join(importerDir, specifier),
+    );
 
-  const direct = fileLookup.get(candidate);
+    const resolved = lookupInternalFile(candidate, fileLookup);
 
-  if (direct) {
-    return {
-      kind: "internal",
-      path: direct,
-      source: specifier,
-    };
-  }
-
-  const extensionless = candidate.replace(/\.(js|jsx|ts|tsx)$/, "");
-
-  const withoutExtension = fileLookup.get(extensionless);
-
-  if (withoutExtension) {
-    return {
-      kind: "internal",
-      path: withoutExtension,
-      source: specifier,
-    };
-  }
-
-  const indexCandidates = [
-    `${candidate}/index.ts`,
-    `${candidate}/index.tsx`,
-    `${candidate}/index.js`,
-    `${candidate}/index.jsx`,
-  ];
-
-  for (const indexCandidate of indexCandidates) {
-    const resolvedIndex = fileLookup.get(indexCandidate);
-
-    if (resolvedIndex) {
+    if (resolved) {
       return {
         kind: "internal",
-        path: resolvedIndex,
+        path: resolved,
+        source: specifier,
+      };
+    }
+
+    return {
+      kind: "unresolved",
+      source: specifier,
+    };
+  }
+
+  /*
+   * 2. Configured TypeScript path aliases
+   */
+  const hasMatchingAlias = (resolverConfig.paths ?? []).some((mapping) =>
+    isAliasPatternMatch(mapping.pattern, specifier),
+  );
+
+  if (hasMatchingAlias) {
+    const resolved = resolveAlias(
+      specifier,
+      fileLookup,
+      repoRoot,
+      resolverConfig,
+    );
+
+    if (resolved) {
+      return {
+        kind: "internal",
+        path: resolved,
+        source: specifier,
+      };
+    }
+
+    return {
+      kind: "unresolved",
+      source: specifier,
+    };
+  }
+
+  /*
+   * 3. baseUrl imports
+   */
+  if (resolverConfig.baseUrl) {
+    const candidate = path.posix.normalize(
+      path.posix.join(repoRoot, resolverConfig.baseUrl, specifier),
+    );
+
+    const resolved = lookupInternalFile(candidate, fileLookup);
+
+    if (resolved) {
+      return {
+        kind: "internal",
+        path: resolved,
         source: specifier,
       };
     }
   }
 
-  if (!specifier.startsWith(".")) {
-    return {
-      kind: "external",
-      source: specifier,
-    };
-  }
-
+  /*
+   * 4. Everything else is a package/external module.
+   */
   return {
-    kind: "unresolved",
+    kind: "external",
     source: specifier,
   };
 }
 
-export function attachCrossFileImpact(fileTree: any[]) {
+export function attachCrossFileImpact(
+  fileTree: any[],
+  resolverConfig: ModuleResolverConfig = {},
+) {
   const files: {
     relPath: string;
     imports: string[];
@@ -96,14 +260,17 @@ export function attachCrossFileImpact(fileTree: any[]) {
   const collect = (nodes: any[]) => {
     for (const node of nodes) {
       if (!node) continue;
+
       if (node.type === "file") {
         const imports = Array.isArray(node.imports)
           ? node.imports
               .map((i: any) => (typeof i === "string" ? i : i?.name))
               .filter(
-                (imp: string) => typeof imp === "string" && imp.length > 0,
+                (imp: unknown): imp is string =>
+                  typeof imp === "string" && imp.length > 0,
               )
           : [];
+
         files.push({
           relPath: node.fullPath,
           imports,
@@ -114,21 +281,19 @@ export function attachCrossFileImpact(fileTree: any[]) {
       }
     }
   };
+
   collect(fileTree);
 
   const repoRoot = files.length ? files[0].relPath.split("/")[0] : "";
 
   const fileLookup = new Map<string, string>();
 
-  for (const f of files) {
-    const noExt = f.relPath.replace(/\.(js|jsx|ts|tsx)$/, "");
-    fileLookup.set(noExt, f.relPath);
-    fileLookup.set(f.relPath, f.relPath);
+  for (const file of files) {
+    const normalizedPath = path.posix.normalize(file.relPath);
 
-    if (f.relPath.endsWith("/index.ts") || f.relPath.endsWith("/index.tsx")) {
-      const dir = f.relPath.replace(/\/index\.(ts|tsx)$/, "");
-      fileLookup.set(dir, f.relPath);
-    }
+    fileLookup.set(normalizedPath, file.relPath);
+
+    fileLookup.set(stripSourceExtension(normalizedPath), file.relPath);
   }
 
   const forwardMap: Record<string, ForwardImpact> = {};
@@ -138,8 +303,14 @@ export function attachCrossFileImpact(fileTree: any[]) {
     const resolvedImports: string[] = [];
     const brokenImports: { source: string }[] = [];
 
-    for (const imp of imports) {
-      const resolution = resolveModule(relPath, imp, fileLookup, repoRoot);
+    for (const specifier of imports) {
+      const resolution = resolveModule(
+        relPath,
+        specifier,
+        fileLookup,
+        repoRoot,
+        resolverConfig,
+      );
 
       if (resolution.kind === "external") {
         continue;
@@ -147,7 +318,7 @@ export function attachCrossFileImpact(fileTree: any[]) {
 
       if (resolution.kind === "unresolved") {
         brokenImports.push({
-          source: imp,
+          source: specifier,
         });
         continue;
       }
@@ -179,9 +350,9 @@ export function attachCrossFileImpact(fileTree: any[]) {
 
   for (const { relPath, nodeRef } of files) {
     nodeRef.impact = {
-      imports: forwardMap[relPath]?.imports || [],
-      usedBy: reverseMap[relPath] || [],
-      brokenImports: forwardMap[relPath]?.brokenImports || [],
+      imports: forwardMap[relPath]?.imports ?? [],
+      usedBy: reverseMap[relPath] ?? [],
+      brokenImports: forwardMap[relPath]?.brokenImports ?? [],
     };
   }
 

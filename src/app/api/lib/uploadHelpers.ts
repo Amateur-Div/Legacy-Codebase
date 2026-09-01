@@ -4,6 +4,7 @@ import fs from "fs";
 import * as babelParser from "@babel/parser";
 import { detectLanguage, getLanguageColor } from "./language";
 import { extractStructureBabel } from "./extractStructureBable";
+import { classifyRepositoryFile } from "./analyzer/fileRoleClassifier";
 
 const MAX_FILE_SIZE_BYTES = 1024 * 1024;
 
@@ -48,111 +49,6 @@ export function extractHighlights(code: string) {
 
 export function isBinaryFile(buffer: Buffer) {
   return buffer.includes(0);
-}
-
-type EntrypointAnalysis = {
-  isLikelyEntry: boolean;
-  score: number;
-  reasons: string[];
-};
-
-export function analyzeEntrypoint(
-  filePath: string,
-  content: string,
-): EntrypointAnalysis {
-  let score = 0;
-  const reasons: string[] = [];
-  const lower = filePath.toLowerCase();
-
-  if (
-    lower.includes(".spec.") ||
-    lower.includes(".test.") ||
-    lower.includes("/__tests__/") ||
-    lower.includes("/e2e/")
-  ) {
-    return {
-      isLikelyEntry: false,
-      score: 0,
-      reasons: [],
-    };
-  }
-
-  const strongNames = [
-    "main.ts",
-    "main.js",
-    "server.ts",
-    "server.js",
-    "cli.ts",
-    "cli.js",
-  ];
-
-  if (strongNames.some((n) => lower.endsWith(n))) {
-    score += 30;
-
-    reasons.push("strong filename");
-  }
-
-  const weakNames = ["index.ts", "index.js", "app.ts", "app.js"];
-
-  if (weakNames.some((n) => lower.endsWith(n))) {
-    score += 10;
-
-    reasons.push("common entry filename");
-  }
-
-  if (content.includes("NestFactory.create")) {
-    score += 70;
-
-    reasons.push("nestjs bootstrap");
-  }
-
-  if (content.includes(".listen(") || content.includes("createServer(")) {
-    score += 50;
-
-    reasons.push("http listener");
-  }
-
-  if (content.includes("createRoot(") || content.includes("ReactDOM.render(")) {
-    score += 60;
-
-    reasons.push("react bootstrap");
-  }
-
-  if (content.includes("process.argv") || content.includes("commander")) {
-    score += 40;
-
-    reasons.push("cli runtime");
-  }
-
-  if (
-    lower.includes("/app/layout.") ||
-    lower.includes("/app/page.") ||
-    lower.includes("/middleware.")
-  ) {
-    score += 35;
-
-    reasons.push("nextjs app entry");
-  }
-
-  if (
-    lower.includes("/components/") ||
-    lower.includes("/hooks/") ||
-    lower.includes("/utils/")
-  ) {
-    score -= 25;
-
-    reasons.push("utility/component file");
-  }
-
-  if (content.split("\n").length < 5) {
-    score -= 10;
-  }
-
-  return {
-    isLikelyEntry: score >= 40,
-    score,
-    reasons,
-  };
 }
 
 const CATEGORY_MAP: Record<string, string> = {
@@ -407,11 +303,7 @@ export async function buildFileTree(files: string[], rootDir: string) {
         let blocks: any[] = [];
         let apis: any[] = [];
         let schemas: any[] = [];
-        let entryAnalysis: EntrypointAnalysis = {
-          isLikelyEntry: false,
-          score: 0,
-          reasons: [],
-        };
+        let classification = classifyRepositoryFile(file, "");
 
         if (isFile) {
           const absolutePath = path.join(rootDir, fullPath);
@@ -427,7 +319,7 @@ export async function buildFileTree(files: string[], rootDir: string) {
                 const content = buffer.toString("utf-8");
                 loc = content.split("\n").length;
 
-                entryAnalysis = analyzeEntrypoint(file, content);
+                classification = classifyRepositoryFile(file, content);
 
                 const ext = part.split(".").pop()?.toLowerCase();
                 if (["js", "ts", "jsx", "tsx"].includes(ext || "")) {
@@ -470,7 +362,8 @@ export async function buildFileTree(files: string[], rootDir: string) {
           exports,
           apis,
           schemas,
-          entry: entryAnalysis,
+          role: classification.role,
+          entry: classification.entry,
           children: isFile ? undefined : [],
         };
 
