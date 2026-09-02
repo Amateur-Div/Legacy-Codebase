@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { resolveModule } from "../../buildCrossFileImpactMap";
+import {
+  attachCrossFileImpact,
+  resolveModule,
+} from "../../buildCrossFileImpactMap";
 
 const repoRoot = "repo";
 
@@ -483,5 +486,153 @@ describe("resolveModule", () => {
       kind: "unresolved",
       source: "@config",
     });
+  });
+});
+
+describe("attachCrossFileImpact", () => {
+  it("attaches forward impact for an internal dependency", () => {
+    const fileTree = [
+      {
+        type: "directory",
+        name: "src",
+        children: [
+          {
+            type: "file",
+            name: "page.tsx",
+            fullPath: "repo/src/page.tsx",
+            imports: ["./foo"],
+          },
+          {
+            type: "file",
+            name: "foo.ts",
+            fullPath: "repo/src/foo.ts",
+            imports: [],
+          },
+        ],
+      },
+    ];
+
+    const result = attachCrossFileImpact(fileTree);
+
+    const page = result[0].children[0];
+    const foo = result[0].children[1];
+
+    expect(page.impact.imports).toEqual(["repo/src/foo.ts"]);
+    expect(foo.impact.imports).toEqual([]);
+  });
+
+  it("attaches reverse impact through usedBy", () => {
+    const fileTree = [
+      {
+        type: "directory",
+        name: "src",
+        children: [
+          {
+            type: "file",
+            name: "page.tsx",
+            fullPath: "repo/src/page.tsx",
+            imports: ["./foo"],
+          },
+          {
+            type: "file",
+            name: "foo.ts",
+            fullPath: "repo/src/foo.ts",
+            imports: [],
+          },
+        ],
+      },
+    ];
+
+    const result = attachCrossFileImpact(fileTree);
+
+    const page = result[0].children[0];
+    const foo = result[0].children[1];
+
+    expect(page.impact.usedBy).toEqual([]);
+    expect(foo.impact.usedBy).toEqual(["repo/src/page.tsx"]);
+  });
+
+  it("records unresolved imports as broken imports", () => {
+    const fileTree = [
+      {
+        type: "directory",
+        name: "src",
+        children: [
+          {
+            type: "file",
+            name: "page.tsx",
+            fullPath: "repo/src/page.tsx",
+            imports: ["./does-not-exist"],
+          },
+        ],
+      },
+    ];
+
+    const result = attachCrossFileImpact(fileTree);
+
+    const page = result[0].children[0];
+
+    expect(page.impact.imports).toEqual([]);
+    expect(page.impact.brokenImports).toEqual([
+      {
+        source: "./does-not-exist",
+      },
+    ]);
+  });
+
+  it("ignores external package imports in the internal impact graph", () => {
+    const fileTree = [
+      {
+        type: "directory",
+        name: "src",
+        children: [
+          {
+            type: "file",
+            name: "page.tsx",
+            fullPath: "repo/src/page.tsx",
+            imports: ["react", "next"],
+          },
+        ],
+      },
+    ];
+
+    const result = attachCrossFileImpact(fileTree);
+
+    const page = result[0].children[0];
+
+    expect(page.impact.imports).toEqual([]);
+    expect(page.impact.usedBy).toEqual([]);
+    expect(page.impact.brokenImports).toEqual([]);
+  });
+
+  it("deduplicates repeated imports of the same internal file", () => {
+    const fileTree = [
+      {
+        type: "directory",
+        name: "src",
+        children: [
+          {
+            type: "file",
+            name: "page.tsx",
+            fullPath: "repo/src/page.tsx",
+            imports: ["./foo", "./foo"],
+          },
+          {
+            type: "file",
+            name: "foo.ts",
+            fullPath: "repo/src/foo.ts",
+            imports: [],
+          },
+        ],
+      },
+    ];
+
+    const result = attachCrossFileImpact(fileTree);
+
+    const page = result[0].children[0];
+    const foo = result[0].children[1];
+
+    expect(page.impact.imports).toEqual(["repo/src/foo.ts"]);
+    expect(foo.impact.usedBy).toEqual(["repo/src/page.tsx"]);
   });
 });
