@@ -2,6 +2,20 @@ import clientPromise from "../../../../lib/mongoClient";
 
 const COLLECTION = "graphs";
 
+export async function ensureGraphIndexes() {
+  const client = await clientPromise;
+  const db = client.db();
+  const col = db.collection(COLLECTION);
+
+  await col.createIndex(
+    { projectId: 1 },
+    {
+      unique: true,
+      name: "unique_project_graph",
+    },
+  );
+}
+
 export async function saveGraph(
   projectId: string,
   record: {
@@ -20,25 +34,40 @@ export async function saveGraph(
   const db = client.db();
   const col = db.collection(COLLECTION);
 
-  await col.insertOne({
-    projectId,
-    ownerId,
-    createdAt: new Date(),
-    record,
-  });
+  await col.updateOne(
+    { projectId },
+    {
+      $setOnInsert: {
+        projectId,
+        ownerId,
+        createdAt: new Date(),
+      },
+      $set: {
+        ownerId,
+        record,
+        updatedAt: new Date(),
+      },
+    },
+    {
+      upsert: true,
+    },
+  );
 }
 
-export async function getGraph(projectId: any, ownerId?: string) {
+export async function getGraph(projectId: string, ownerId?: string) {
   const client = await clientPromise;
   const db = client.db();
   const col = db.collection(COLLECTION);
 
-  const graphs = await col
-    .find({ projectId })
-    .sort({ createdAt: -1 })
-    .limit(1)
-    .toArray();
-  return graphs || { nodes: [], edges: [] };
+  const filter: Record<string, any> = { projectId };
+
+  if (ownerId) {
+    filter.ownerId = ownerId;
+  }
+
+  const graph = await col.findOne(filter);
+
+  return graph || null;
 }
 
 export async function listGraphs(limit = 10) {
@@ -55,6 +84,7 @@ export async function listGraphs(limit = 10) {
   return docs.map((d) => ({
     projectId: d.projectId,
     createdAt: d.createdAt,
+    updatedAt: d.updatedAt,
     nodeCount: d.record?.nodes?.length ?? 0,
     edgeCount: d.record?.edges?.length ?? 0,
   }));

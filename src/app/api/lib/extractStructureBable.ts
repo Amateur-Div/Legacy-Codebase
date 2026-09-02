@@ -10,7 +10,6 @@ import {
   TSTypeAliasDeclaration,
   isImportDeclaration,
   isCallExpression,
-  isImportExpression,
   isStringLiteral,
   BlockStatement,
   IfStatement,
@@ -218,8 +217,14 @@ function createImportVisitor(ctx: ExtractContext) {
         }
       }
 
-      if (isImportExpression(node) && isStringLiteral((node as any).source)) {
-        const val = (node as any).source.value;
+      if (
+        isCallExpression(node) &&
+        node.callee.type === "Import" &&
+        node.arguments.length === 1 &&
+        isStringLiteral(node.arguments[0])
+      ) {
+        const val = node.arguments[0].value;
+
         if (!ctx.seen.imports.has(val)) {
           ctx.seen.imports.add(val);
           ctx.imports.push({

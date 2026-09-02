@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findDeadFiles } from "../../impactEngine";
+import { findCircularDependencies, findDeadFiles } from "../../impactEngine";
 
 describe("findDeadFiles", () => {
   it("finds unreachable source files from trusted roots", () => {
@@ -198,5 +198,59 @@ describe("findDeadFiles", () => {
     });
 
     expect(result).toEqual(["B"]);
+  });
+
+  it("treats a dynamically imported file as reachable", () => {
+    const graph: any = {
+      nodes: [
+        { id: "A", type: "file", file: "src/app/page.tsx" },
+        { id: "B", type: "file", file: "src/lib/feature.ts" },
+        { id: "C", type: "file", file: "src/lib/dead.ts" },
+      ],
+      edges: [
+        {
+          id: "A-B",
+          from: "A",
+          to: "B",
+          label: "imports",
+        },
+      ],
+    };
+
+    const result = findDeadFiles(graph, {
+      entryFileIds: new Set(["A"]),
+      candidateFileIds: new Set(["B", "C"]),
+    });
+
+    expect(result).toEqual(["C"]);
+  });
+});
+
+describe("findCircularDependencies", () => {
+  it("detects a cycle containing a dynamically imported dependency", () => {
+    const graph: any = {
+      nodes: [
+        { id: "A", type: "file", file: "src/a.ts" },
+        { id: "B", type: "file", file: "src/b.ts" },
+      ],
+      edges: [
+        {
+          id: "A-B",
+          from: "A",
+          to: "B",
+          label: "imports",
+        },
+        {
+          id: "B-A",
+          from: "B",
+          to: "A",
+          label: "imports",
+        },
+      ],
+    };
+
+    const result = findCircularDependencies(graph);
+
+    expect(result).toContainEqual(["A", "B", "A", "A"]);
   });
 });

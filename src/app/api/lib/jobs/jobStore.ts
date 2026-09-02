@@ -5,7 +5,7 @@ const COLLECTION = "jobs";
 
 export async function saveJob(job: Partial<Job> & { id: string }) {
   const db = (await clientPromise).db();
-  const collection = db.collection("jobs");
+  const collection = db.collection(COLLECTION);
 
   const { id, ...updates } = job;
 
@@ -38,9 +38,31 @@ export async function listJobs(projectId: string, ownerId?: string) {
 }
 
 export async function deleteOldJobs(days = 7) {
-  const db = (await clientPromise).db();
+  const db = await clientPromise.then((client) => client.db());
   const collection = db.collection(COLLECTION);
+
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
-  await collection.deleteMany({ createdAt: { $lt: cutoff.getTime() } });
+
+  await collection.deleteMany({
+    createdAt: { $lt: cutoff },
+  });
+}
+
+export async function hasProjectFileMetadata(
+  db: any,
+  projectId: string,
+  filePath: string,
+): Promise<boolean> {
+  const existing = await db.collection("project_files").findOne(
+    {
+      projectId,
+      path: filePath,
+    },
+    {
+      projection: { _id: 1 },
+    },
+  );
+
+  return Boolean(existing);
 }

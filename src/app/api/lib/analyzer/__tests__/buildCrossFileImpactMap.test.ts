@@ -635,4 +635,60 @@ describe("attachCrossFileImpact", () => {
     expect(page.impact.imports).toEqual(["repo/src/foo.ts"]);
     expect(foo.impact.usedBy).toEqual(["repo/src/page.tsx"]);
   });
+
+  it("attaches forward impact for a dynamic import", () => {
+    const fileTree: any[] = [
+      {
+        type: "file",
+        fullPath: "repo/src/page.tsx",
+        imports: [{ name: "./feature" }],
+      },
+      {
+        type: "file",
+        fullPath: "repo/src/feature.ts",
+        imports: [],
+      },
+    ];
+
+    attachCrossFileImpact(fileTree);
+
+    expect(fileTree[0].impact.imports).toEqual(["repo/src/feature.ts"]);
+  });
+
+  it("attaches reverse impact for a dynamic import", () => {
+    const fileTree: any[] = [
+      {
+        type: "file",
+        fullPath: "repo/src/page.tsx",
+        imports: [{ name: "./feature" }],
+      },
+      {
+        type: "file",
+        fullPath: "repo/src/feature.ts",
+        imports: [],
+      },
+    ];
+
+    attachCrossFileImpact(fileTree);
+
+    expect(fileTree[1].impact.usedBy).toEqual(["repo/src/page.tsx"]);
+  });
+
+  it("records an unresolved dynamic import as a broken import", () => {
+    const fileTree: any[] = [
+      {
+        type: "file",
+        fullPath: "repo/src/page.tsx",
+        imports: [{ name: "./missing-feature" }],
+      },
+    ];
+
+    attachCrossFileImpact(fileTree);
+
+    expect(fileTree[0].impact.brokenImports).toEqual([
+      {
+        source: "./missing-feature",
+      },
+    ]);
+  });
 });

@@ -1,3 +1,27 @@
+export type FlowNodeSemantic = {
+  complexity?: number;
+  importance?: number;
+  dead?: boolean;
+
+  connectivity?: {
+    inDegree: number;
+    outDegree: number;
+    totalDegree: number;
+    score: number;
+  };
+
+  structure?: {
+    importCount: number;
+    exportCount: number;
+    functionCount: number;
+    classCount: number;
+    componentCount: number;
+    apiCount: number;
+    schemaCount: number;
+    blockCount: number;
+  };
+};
+
 export type FlowNode = {
   id: string;
   type: string;
@@ -5,11 +29,7 @@ export type FlowNode = {
   file?: string;
   line?: number;
   code?: string;
-  semantic?: {
-    complexity?: number;
-    importance?: number;
-    dead?: boolean;
-  };
+  semantic?: FlowNodeSemantic;
   meta?: Record<string, any>;
 };
 
@@ -23,7 +43,10 @@ export type FlowEdge = {
 export type GraphIntelligence = {
   deadFiles: string[];
   circularDependencies: string[][];
-  importanceRanking: { fileId: string; score: number }[];
+  importanceRanking: {
+    fileId: string;
+    score: number;
+  }[];
 };
 
 export type FlowGraphMeta = {

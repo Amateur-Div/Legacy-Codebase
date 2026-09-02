@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import AdmZip from "adm-zip";
 import clientPromise from "../../../../lib/mongoClient";
-import { saveJob } from "./jobStore";
+import { hasProjectFileMetadata, saveJob } from "./jobStore";
 import { instrumentExecutionBabel } from "../instrumentExecutionBabel";
 import { mergeFileGraphs } from "../analyzer/mergeFileGraph";
 import { normalizeGraphIds } from "../analyzer/normalizeGraphIds";
@@ -312,12 +312,22 @@ export async function runJobStep(job: any) {
 
           const outputPath = path.join(partialDir, `${index}.json`);
 
-          if (fs.existsSync(outputPath)) return null;
-
           const relPath = path
             .relative(path.join(job.extractedPath, "repo"), absPath)
             .split(path.sep)
             .join("/");
+
+          if (fs.existsSync(outputPath)) {
+            const metadataExists = await hasProjectFileMetadata(
+              db,
+              job.projectId,
+              relPath,
+            );
+
+            if (metadataExists) {
+              return null;
+            }
+          }
 
           const fileMeta = fileMetadataMap.get(relPath);
 
@@ -406,7 +416,7 @@ export async function runJobStep(job: any) {
     const newCursor = Math.min(cursor + CHUNK_SIZE, files.length);
 
     const total = files.length;
-    const progress = Math.round((newCursor / total) * 60);
+    const progress = total === 0 ? 60 : Math.round((newCursor / total) * 60);
 
     await saveJob({
       id: job.id,
@@ -589,27 +599,13 @@ export async function runJobStep(job: any) {
       fs.readFileSync(path.join(job.extractedPath, "final.json"), "utf-8"),
     );
 
-    const existing = await db
-      .collection("graphs")
-      .findOne({ projectId: job.projectId });
-
-    if (existing) {
-      await saveJob({
-        ...job,
-        status: "done",
-        step: "done",
-        progress: 100,
-        message: "Already processed",
-      });
-      return;
-    }
-
     console.log("[save] Graph size:", {
       nodes: finalGraph.nodes.length,
       edges: finalGraph.edges.length,
     });
 
     const graphJson = JSON.stringify(finalGraph);
+
     console.log("[save] Graph JSON size:", {
       bytes: Buffer.byteLength(graphJson, "utf-8"),
       mb: (Buffer.byteLength(graphJson, "utf-8") / 1024 / 1024).toFixed(2),

@@ -55,14 +55,29 @@ export function enrichGraphSemantics(graph: FlowGraph): FlowGraph {
   }
 
   let maxDegree = 0;
-  const degrees = new Map<string, number>();
+  const degrees = new Map<
+    string,
+    {
+      inDegree: number;
+      outDegree: number;
+      totalDegree: number;
+    }
+  >();
 
   for (const n of nodes) {
-    const deg =
-      (inAdj.get(n.id) || []).length + (outAdj.get(n.id) || []).length;
+    const inDegree = (inAdj.get(n.id) || []).length;
+    const outDegree = (outAdj.get(n.id) || []).length;
+    const totalDegree = inDegree + outDegree;
 
-    degrees.set(n.id, deg);
-    if (deg > maxDegree) maxDegree = deg;
+    degrees.set(n.id, {
+      inDegree,
+      outDegree,
+      totalDegree,
+    });
+
+    if (totalDegree > maxDegree) {
+      maxDegree = totalDegree;
+    }
   }
 
   function estimateComplexity(n: FlowNode) {
@@ -97,20 +112,30 @@ export function enrichGraphSemantics(graph: FlowGraph): FlowGraph {
   }
 
   for (const n of nodes) {
-    const deg = degrees.get(n.id) || 0;
+    const degree = degrees.get(n.id) || {
+      inDegree: 0,
+      outDegree: 0,
+      totalDegree: 0,
+    };
 
-    const importance = maxDegree > 0 ? deg / maxDegree : 0;
+    const importance = maxDegree > 0 ? degree.totalDegree / maxDegree : 0;
 
     const complexity = estimateComplexity(n);
+
+    const connectivityScore = importance;
 
     n.semantic = {
       ...(n.semantic || {}),
       importance,
       complexity,
-    };
 
-    (n as any).importanceScore = importance;
-    (n as any).complexityScore = complexity;
+      connectivity: {
+        inDegree: degree.inDegree,
+        outDegree: degree.outDegree,
+        totalDegree: degree.totalDegree,
+        score: connectivityScore,
+      },
+    };
   }
 
   const enrichedGraph: FlowGraph = {
