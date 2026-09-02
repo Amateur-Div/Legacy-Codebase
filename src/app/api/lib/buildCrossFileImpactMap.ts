@@ -89,6 +89,14 @@ function expandPathTarget(target: string, wildcardValue: string): string {
 function candidatePaths(candidate: string): string[] {
   const normalized = path.posix.normalize(candidate);
 
+  const hasExplicitSourceExtension = SOURCE_EXTENSIONS.some((extension) =>
+    normalized.endsWith(extension),
+  );
+
+  if (hasExplicitSourceExtension) {
+    return [normalized];
+  }
+
   const candidates: string[] = [normalized, stripSourceExtension(normalized)];
 
   for (const extension of SOURCE_EXTENSIONS) {

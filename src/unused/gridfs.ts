@@ -1,6 +1,6 @@
 import { GridFSBucket, ObjectId } from "mongodb";
 import fs from "fs";
-import clientPromise from "../../../lib/mongoClient";
+import clientPromise from "../lib/mongoClient";
 
 let bucket: GridFSBucket | null = null;
 
